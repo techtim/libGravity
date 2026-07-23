@@ -2,7 +2,7 @@
  * @file channel.h
  * @author Adam Wonak (https://github.com/awonak/)
  * @brief Alt firmware version of Gravity by Sitka Instruments.
- * @version 2.0.1
+ * @version 2.0.2
  * @date 2025-07-04
  *
  * @copyright MIT - (c) 2025 - Adam Wonak - adam.wonak@gmail.com
@@ -13,7 +13,7 @@
 #define CHANNEL_H
 
 #include <Arduino.h>
-#include <libGravity.h>
+#include "digital_output.h"
 
 // Enums for CV Mod destination
 enum CvDestination : uint8_t {
@@ -74,6 +74,8 @@ public:
 
     cv1_dest = CV_DEST_NONE;
     cv2_dest = CV_DEST_NONE;
+
+    mute = false;
 
     // Calcule the clock mod pulses on init.
     _recalculatePulses();
@@ -221,7 +223,8 @@ public:
 
     int dest_mod = _calculateMod(CV_DEST_MOD, cv1_val, cv2_val,
                                  -(MOD_CHOICE_SIZE / 2), MOD_CHOICE_SIZE / 2);
-    cvmod_clock_mod_index = constrain(base_clock_mod_index + dest_mod, 0, 100);
+    cvmod_clock_mod_index =
+        constrain(base_clock_mod_index + dest_mod, 0, MOD_CHOICE_SIZE - 1);
 
     int prob_mod = _calculateMod(CV_DEST_PROB, cv1_val, cv2_val, -50, 50);
     cvmod_probability = constrain(base_probability + prob_mod, 0, 100);

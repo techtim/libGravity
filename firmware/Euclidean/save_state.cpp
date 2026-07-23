@@ -2,7 +2,7 @@
  * @file save_state.cpp
  * @author Adam Wonak (https://github.com/awonak/)
  * @brief Alt firmware version of Gravity by Sitka Instruments.
- * @version 2.0.1
+ * @version 2.0.2
  * @date 2025-07-04
  *
  * @copyright MIT - (c) 2025 - Adam Wonak - adam.wonak@gmail.com
@@ -18,7 +18,7 @@
 // Define the constants for the current firmware.
 const char StateManager::SKETCH_NAME[] = "ALT EUCLIDEAN";
 const char StateManager::SEMANTIC_VERSION[] =
-    "V2.0.1"; // NOTE: This should match the version in the
+    "V2.0.2"; // NOTE: This should match the version in the
               // library.properties file.
 
 // Number of available save slots.

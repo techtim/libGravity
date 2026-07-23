@@ -13,6 +13,9 @@ const int EEPROM_COMP1_SHIFT = 13;
 const int EEPROM_COMP1_SIZE = 15;
 const int EEPROM_COMP2_SHIFT = 17;
 const int EEPROM_COMP2_SIZE = 19;
+const int EEPROM_ENCODER_DIR = 21;
+const int EEPROM_HYSTERESIS = 23;
+const int EEPROM_DISPLAY_CV = 25;
 const byte EEPROM_INIT_FLAG = 0xAB; // Update flag to re-init
 
 // EEPROM Delay Save
@@ -20,10 +23,19 @@ const unsigned long SAVE_DELAY_MS = 5000;
 bool eeprom_needs_save = false;
 unsigned long last_param_change = 0;
 
-enum AppMode { MODE_COMPARATOR, MODE_CALIBRATION };
+enum AppMode { MODE_COMPARATOR, MODE_SETTINGS, MODE_CALIBRATION };
 AppMode current_mode = MODE_COMPARATOR;
 byte cal_selected_param = 0; // 0=CV1 Low, 1=CV1 Offset, 2=CV1 High, 3=CV2 Low,
                              // 4=CV2 Offset, 5=CV2 High
+
+// Settings Menu State
+bool encoder_reversed = false;
+int hysteresis = 4;
+bool display_cv = true;
+bool settings_editing = false;
+
+enum SettingsParameter { SETTING_ENCODER_DIR, SETTING_HYSTERESIS, SETTING_DISPLAY_CV };
+SettingsParameter settings_selected_param = SETTING_ENCODER_DIR;
 
 // UI Parameters
 enum Parameter { COMP1_SHIFT, COMP1_SIZE, COMP2_SHIFT, COMP2_SIZE };
@@ -44,7 +56,6 @@ int last_cv1_draw = -1000;
 int last_cv2_draw = -1000;
 
 unsigned long last_redraw = 0;
-bool prev_both_buttons = false;
 
 // Calibration Methods
 void LoadCalibration() {
@@ -67,6 +78,12 @@ void LoadCalibration() {
     EEPROM.get(EEPROM_COMP1_SIZE, comp1_size);
     EEPROM.get(EEPROM_COMP2_SHIFT, comp2_shift);
     EEPROM.get(EEPROM_COMP2_SIZE, comp2_size);
+
+    EEPROM.get(EEPROM_ENCODER_DIR, encoder_reversed);
+    EEPROM.get(EEPROM_HYSTERESIS, hysteresis);
+    EEPROM.get(EEPROM_DISPLAY_CV, display_cv);
+    if (hysteresis < 0 || hysteresis > 16) hysteresis = 4; // Bounds check
+    gravity.encoder.SetReverseDirection(encoder_reversed);
   }
 }
 
@@ -90,12 +107,52 @@ void SaveCalibration() {
   EEPROM.put(EEPROM_COMP1_SIZE, comp1_size);
   EEPROM.put(EEPROM_COMP2_SHIFT, comp2_shift);
   EEPROM.put(EEPROM_COMP2_SIZE, comp2_size);
+
+  EEPROM.put(EEPROM_ENCODER_DIR, encoder_reversed);
+  EEPROM.put(EEPROM_HYSTERESIS, hysteresis);
+  EEPROM.put(EEPROM_DISPLAY_CV, display_cv);
 }
 
 // Handlers
+void OnEncoderPress() {
+  if (current_mode == MODE_SETTINGS) {
+    settings_editing = !settings_editing;
+    needs_redraw = true;
+  }
+}
+
+void HandlePressedRotate(int val) {
+  int change = val > 0 ? 1 : -1;
+  int next_mode = ((int)current_mode + change) % 3;
+  if (next_mode < 0) next_mode += 3;
+
+  // Cleanup current mode
+  if (current_mode == MODE_SETTINGS) {
+    settings_editing = false;
+    SaveCalibration();
+    gravity.encoder.SetReverseDirection(encoder_reversed);
+  } else if (current_mode == MODE_CALIBRATION) {
+    SaveCalibration();
+  }
+
+  current_mode = (AppMode)next_mode;
+
+  // Setup new mode
+  if (current_mode == MODE_CALIBRATION) {
+    cal_selected_param = 0;
+    // Turn off all outputs to prevent phantom gates while tuning
+    for (int i = 0; i < 6; i++) {
+      gravity.outputs[i].Update(LOW);
+    }
+  }
+
+  needs_redraw = true;
+}
+
 void OnPlayPress() {
   if (gravity.shift_button.On())
     return; // ignore if holding both
+  if (current_mode == MODE_SETTINGS) return; // Ignore in settings
   if (current_mode == MODE_CALIBRATION) {
     cal_selected_param = (cal_selected_param < 3) ? cal_selected_param + 3
                                                   : cal_selected_param - 3;
@@ -116,6 +173,7 @@ void OnPlayPress() {
 void OnShiftPress() {
   if (gravity.play_button.On())
     return; // ignore if holding both
+  if (current_mode == MODE_SETTINGS) return; // Ignore in settings
   if (current_mode == MODE_CALIBRATION) {
     cal_selected_param =
         (cal_selected_param / 3) * 3 + ((cal_selected_param + 1) % 3);
@@ -134,6 +192,38 @@ void OnShiftPress() {
 }
 
 void OnEncoderRotate(int val) {
+  if (current_mode == MODE_SETTINGS) {
+    if (!settings_editing) {
+      // Navigate Mode
+      int change = val > 0 ? 1 : -1;
+      settings_selected_param = (SettingsParameter)(((int)settings_selected_param + change + 3) % 3);
+    } else {
+      // Edit Mode
+      switch (settings_selected_param) {
+        case SETTING_ENCODER_DIR: {
+          int setting = encoder_reversed ? 1 : 0;
+          setting = constrain(setting + (val > 0 ? 1 : -1), 0, 1);
+          encoder_reversed = (setting == 1);
+          gravity.encoder.SetReverseDirection(encoder_reversed);
+          break;
+        }
+        case SETTING_HYSTERESIS:
+          hysteresis = constrain(hysteresis + val, 0, 16);
+          break;
+        case SETTING_DISPLAY_CV: {
+          int setting = display_cv ? 1 : 0;
+          setting = constrain(setting + (val > 0 ? 1 : -1), 0, 1);
+          display_cv = (setting == 1);
+          break;
+        }
+      }
+      eeprom_needs_save = true;
+      last_param_change = millis();
+    }
+    needs_redraw = true;
+    return;
+  }
+
   if (current_mode == MODE_CALIBRATION) {
     AnalogInput *cv = (cal_selected_param > 2) ? &gravity.cv2 : &gravity.cv1;
     // Scale val up so tuning is practical without excessive encoder interrupts
@@ -221,6 +311,38 @@ void UpdateCalibrationDisplay() {
   DisplayCalibrationPoint(&gravity.cv2, "CV2: ", 1);
 }
 
+void UpdateSettingsDisplay() {
+  gravity.display.setFontMode(0);
+  gravity.display.setDrawColor(1);
+  gravity.display.setFont(u8g2_font_profont11_tf);
+  
+  gravity.display.setCursor(0, 10);
+  gravity.display.print("Settings:");
+
+  int y = 25;
+  gravity.display.setCursor(10, y);
+  gravity.display.print("Encoder:");
+  gravity.display.setCursor(80, y);
+  gravity.display.print(encoder_reversed ? "Rev" : "Fwd");
+
+  y += 12;
+  gravity.display.setCursor(10, y);
+  gravity.display.print("Hysteresis:");
+  gravity.display.setCursor(80, y);
+  gravity.display.print(hysteresis);
+
+  y += 12;
+  gravity.display.setCursor(10, y);
+  gravity.display.print("Display CV:");
+  gravity.display.setCursor(80, y);
+  gravity.display.print(display_cv ? "On" : "Off");
+
+  // Selection indicator cursor `>` or `*`
+  y = 25 + (12 * (int)settings_selected_param);
+  gravity.display.setCursor(0, y);
+  gravity.display.print(settings_editing ? "*" : ">");
+}
+
 // UpdateDisplay
 void UpdateDisplay(int cv1_val, int cv2_val) {
   // Comp 1 graphics (Left)
@@ -230,11 +352,13 @@ void UpdateDisplay(int cv1_val, int cv2_val) {
   gravity.display.drawFrame(20, c1_y, 44, c1_h);
 
   // CV 1 Indicator (Filled Box, 50% width, from 0V center)
-  int cv1_y = constrain(26 - ((cv1_val * 3) / 64), 2, 50);
-  if (cv1_val >= 0) {
-    gravity.display.drawBox(31, cv1_y, 22, 26 - cv1_y);
-  } else {
-    gravity.display.drawBox(31, 26, 22, cv1_y - 26);
+  if (display_cv) {
+    int cv1_y = constrain(26 - ((cv1_val * 3) / 64), 2, 50);
+    if (cv1_val >= 0) {
+      gravity.display.drawBox(31, cv1_y, 22, 26 - cv1_y);
+    } else {
+      gravity.display.drawBox(31, 26, 22, cv1_y - 26);
+    }
   }
 
   // Comp 2 graphics (Right)
@@ -244,11 +368,13 @@ void UpdateDisplay(int cv1_val, int cv2_val) {
   gravity.display.drawFrame(74, c2_y, 44, c2_h);
 
   // CV 2 Indicator (Filled Box, 50% width, from 0V center)
-  int cv2_y = constrain(26 - ((cv2_val * 3) / 64), 2, 50);
-  if (cv2_val >= 0) {
-    gravity.display.drawBox(85, cv2_y, 22, 26 - cv2_y);
-  } else {
-    gravity.display.drawBox(85, 26, 22, cv2_y - 26);
+  if (display_cv) {
+    int cv2_y = constrain(26 - ((cv2_val * 3) / 64), 2, 50);
+    if (cv2_val >= 0) {
+      gravity.display.drawBox(85, cv2_y, 22, 26 - cv2_y);
+    } else {
+      gravity.display.drawBox(85, 26, 22, cv2_y - 26);
+    }
   }
 
   // Restore solid drawing for labels
@@ -313,29 +439,13 @@ void setup() {
 
   gravity.play_button.AttachPressHandler(OnPlayPress);
   gravity.shift_button.AttachPressHandler(OnShiftPress);
+  gravity.encoder.AttachPressHandler(OnEncoderPress);
   gravity.encoder.AttachRotateHandler(OnEncoderRotate);
+  gravity.encoder.AttachPressRotateHandler(HandlePressedRotate);
 }
 
 void loop() {
   gravity.Process();
-
-  bool both_pressed = gravity.play_button.On() && gravity.shift_button.On();
-  if (both_pressed && !prev_both_buttons) {
-    if (current_mode == MODE_COMPARATOR) {
-      current_mode = MODE_CALIBRATION;
-      cal_selected_param = 0;
-
-      // Turn off all outputs to prevent phantom gates while tuning
-      for (int i = 0; i < 6; i++) {
-        gravity.outputs[i].Update(LOW);
-      }
-    } else {
-      SaveCalibration();
-      current_mode = MODE_COMPARATOR;
-    }
-    needs_redraw = true;
-  }
-  prev_both_buttons = both_pressed;
 
   int cv1_val = gravity.cv1.Read();
   int cv2_val = gravity.cv2.Read();
@@ -347,28 +457,26 @@ void loop() {
     int c2_lower = comp2_shift - (comp2_size / 2);
     int c2_upper = comp2_shift + (comp2_size / 2);
 
-    const int HYSTERESIS = 4; // Margin to prevent noise bouncing at threshold
-
     bool gate1 = prev_gate1;
     if (gate1) {
-      if (cv1_val < c1_lower - HYSTERESIS || cv1_val > c1_upper + HYSTERESIS) {
+      if (cv1_val < c1_lower - hysteresis || cv1_val > c1_upper + hysteresis) {
         gate1 = false;
       }
     } else {
-      if (cv1_val >= c1_lower + HYSTERESIS &&
-          cv1_val <= c1_upper - HYSTERESIS) {
+      if (cv1_val >= c1_lower + hysteresis &&
+          cv1_val <= c1_upper - hysteresis) {
         gate1 = true;
       }
     }
 
     bool gate2 = prev_gate2;
     if (gate2) {
-      if (cv2_val < c2_lower - HYSTERESIS || cv2_val > c2_upper + HYSTERESIS) {
+      if (cv2_val < c2_lower - hysteresis || cv2_val > c2_upper + hysteresis) {
         gate2 = false;
       }
     } else {
-      if (cv2_val >= c2_lower + HYSTERESIS &&
-          cv2_val <= c2_upper - HYSTERESIS) {
+      if (cv2_val >= c2_lower + hysteresis &&
+          cv2_val <= c2_upper - hysteresis) {
         gate2 = true;
       }
     }
@@ -400,9 +508,14 @@ void loop() {
   }
 
   if (current_mode == MODE_COMPARATOR) {
-    if (abs(cv1_val - last_cv1_draw) > 12 ||
-        abs(cv2_val - last_cv2_draw) > 12) {
-      needs_redraw = true;
+    if (display_cv) {
+      if (abs(cv1_val - last_cv1_draw) > 12 ||
+          abs(cv2_val - last_cv2_draw) > 12) {
+        needs_redraw = true;
+      }
+    } else if (abs(comp1_shift - last_cv1_draw /* hack to force redraw on comp change if CV disabled? */) ) {
+        // We only trigger redraws if comp1/comp2 settings change. But those set needs_redraw=true in OnEncoderRotate. 
+        // So if display_cv is false, we don't redraw from CV fluctuations at all loop.
     }
   } else if (current_mode == MODE_CALIBRATION) {
     // Need frequent redraws in calibration to see the live target input
@@ -427,8 +540,10 @@ void loop() {
       last_cv1_draw = cv1_val;
       last_cv2_draw = cv2_val;
       UpdateDisplay(cv1_val, cv2_val);
-    } else {
+    } else if (current_mode == MODE_CALIBRATION) {
       UpdateCalibrationDisplay();
+    } else if (current_mode == MODE_SETTINGS) {
+      UpdateSettingsDisplay();
     }
     is_drawing = gravity.display.nextPage();
   }

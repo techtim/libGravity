@@ -11,7 +11,9 @@
 #ifndef ANALOG_INPUT_H
 #define ANALOG_INPUT_H
 
-const int MAX_INPUT = (1 << 10) - 1; // Max 10 bit analog read resolution.
+// Named ADC_MAX_INPUT rather than MAX_INPUT to avoid colliding with the POSIX
+// <sys/syslimits.h> MAX_INPUT macro when compiled on a host (e.g. unit tests).
+const int ADC_MAX_INPUT = (1 << 10) - 1; // Max 10 bit analog read resolution.
 
 // estimated default calibration value
 const int CALIBRATED_LOW = -566;
@@ -41,7 +43,7 @@ public:
   void Process() {
     old_read_ = read_;
     int raw = analogRead(pin_);
-    read_ = map(raw, 0, MAX_INPUT, low_, high_);
+    read_ = map(raw, 0, ADC_MAX_INPUT, low_, high_);
     // Cast to long to avoid AVR 16-bit integer overflow prior to constraining
     read_ = constrain((long)read_ - (long)offset_, -512, 512);
     if (inverted_)
@@ -105,8 +107,10 @@ public:
 
 private:
   uint8_t pin_;
-  int16_t read_;
-  uint16_t old_read_;
+  int16_t read_ = 0;
+  // Must be signed and match read_: the reading is bipolar (-512..512), so a
+  // uint16_t here would wrap negative values and break IsRisingEdge().
+  int16_t old_read_ = 0;
   // calibration values.
   int offset_ = 0;
   int low_ = CALIBRATED_LOW;

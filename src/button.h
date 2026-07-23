@@ -107,10 +107,10 @@ class Button {
    private:
     uint8_t pin_;
     uint8_t old_read_ = 1;
-    unsigned long last_press_;
+    unsigned long last_press_ = 0;
     ButtonChange change_ = CHANGE_UNCHANGED;
-    CallbackFunction on_press_;
-    CallbackFunction on_long_press_;
+    CallbackFunction on_press_ = nullptr;
+    CallbackFunction on_long_press_ = nullptr;
 };
 
 #endif

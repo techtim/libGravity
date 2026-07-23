@@ -21,6 +21,7 @@ class Encoder {
     typedef void (*CallbackFunction)(void);
     typedef void (*RotateCallbackFunction)(int val);
     CallbackFunction on_press;
+    CallbackFunction on_long_press;
     RotateCallbackFunction on_press_rotate;
     RotateCallbackFunction on_rotate;
     int change;
@@ -38,6 +39,10 @@ class Encoder {
     }
     void AttachPressHandler(CallbackFunction f) {
         on_press = f;
+    }
+
+    void AttachLongPressHandler(CallbackFunction f) {
+        on_long_press = f;
     }
 
     void AttachRotateHandler(RotateCallbackFunction f) {
@@ -62,6 +67,8 @@ class Encoder {
             if (on_rotate != NULL) on_rotate(change);
         } else if (button_.Change() == Button::CHANGE_RELEASED && !rotated_while_held_) {
             if (on_press != NULL) on_press();
+        } else if (button_.Change() == Button::CHANGE_RELEASED_LONG && !rotated_while_held_) {
+            if (on_long_press != NULL) on_long_press();
         }
 
         // Reset rotate while held state.

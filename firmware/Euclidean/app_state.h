@@ -2,7 +2,7 @@
  * @file app_state.h
  * @author Adam Wonak (https://github.com/awonak/)
  * @brief Alt firmware version of Gravity by Sitka Instruments.
- * @version 2.0.1
+ * @version 2.0.2
  * @date 2025-07-04
  *
  * @copyright MIT - (c) 2025 - Adam Wonak - adam.wonak@gmail.com

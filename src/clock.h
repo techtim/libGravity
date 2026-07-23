@@ -24,8 +24,6 @@
 #define MIDI_STOP 0xFC
 #define MIDI_CONTINUE 0xFB
 
-typedef void (*ExtCallback)(void);
-static ExtCallback extUserCallback = nullptr;
 static void serialEventNoop(uint8_t msg, uint8_t status) {}
 
 class Clock {
@@ -70,8 +68,13 @@ public:
   // Handle external clock tick and call user callback when receiving clock
   // trigger (PPQN_4, PPQN_24, or MIDI).
   void AttachExtHandler(void (*callback)()) {
-    extUserCallback = callback;
-    attachInterrupt(digitalPinToInterrupt(EXT_PIN), callback, RISING);
+    // Configure the EXT input. The original firmware ran on this same hardware
+    // with INPUT_PULLUP + FALLING edge (the input idles HIGH via its input
+    // conditioning and a clock/reset pulse pulls it LOW). Match that here.
+    // (If your build drives EXT high-active with an external pull-down, switch
+    // to INPUT + RISING instead.)
+    pinMode(EXT_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(EXT_PIN), callback, FALLING);
   }
 
   // Internal PPQN96 callback for all clock timer operations.
@@ -114,14 +117,16 @@ public:
       uClock.setInputPPQN(uClock.PPQN_24);
       NeoSerial.attachInterrupt(onSerialEvent);
       break;
+    case SOURCE_LAST:
+    default:
+      break;
     }
     if (was_playing) {
       uClock.start();
     }
   }
 
-  // Return true if the current selected source is externl (PPQN_4, PPQN_24, or
-  // MIDI).
+  // Return true if the current selected source is externl (PPQN_4, PPQN_24, or MIDI).
   bool ExternalSource() {
     return uClock.getClockMode() == uClock.EXTERNAL_CLOCK;
   }
@@ -137,8 +142,7 @@ public:
   // Set the clock tempo to a int between 1 and 400.
   void SetTempo(int tempo) { return uClock.setTempo(tempo); }
 
-  // Record an external clock tick received to process external/internal
-  // syncronization.
+  // Record an external clock tick received to process external/internal syncronization.
   void Tick() { uClock.clockMe(); }
 
   // Start the internal clock.
@@ -157,21 +161,20 @@ private:
   Source source_ = SOURCE_INTERNAL;
 
   static void onSerialEvent(uint8_t msg, uint8_t status) {
-    // Note: uClock start and stop will echo to MIDI.
+    // Note: uClock.start()/stop() already echo MIDI Start/Stop via the clock start/stop callbacks,
     switch (msg) {
     case MIDI_CLOCK:
-      if (extUserCallback) {
-        extUserCallback();
-      }
+      // Advance the external clock on every incoming MIDI clock pulse.
+      // The EXT hardware pin continues to act as reset in MIDI mode 
+      uClock.clockMe();
       break;
     case MIDI_STOP:
       uClock.stop();
-      sendMIDIStop();
       break;
     case MIDI_START:
     case MIDI_CONTINUE:
+      // uClock has no separate "continue"; both start the clock
       uClock.start();
-      sendMIDIStart();
       break;
     }
   }

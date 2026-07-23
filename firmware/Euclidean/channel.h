@@ -2,7 +2,7 @@
  * @file channel.h
  * @author Adam Wonak (https://github.com/awonak/)
  * @brief Alt firmware version of Gravity by Sitka Instruments.
- * @version 2.0.1
+ * @version 2.0.2
  * @date 2025-07-04
  *
  * @copyright MIT - (c) 2025 - Adam Wonak - adam.wonak@gmail.com
@@ -13,8 +13,7 @@
 #define CHANNEL_H
 
 #include <Arduino.h>
-#include <libGravity.h>
-
+#include "digital_output.h"
 #include "euclidean.h"
 
 // Enums for CV Mod destination
@@ -68,6 +67,8 @@ public:
 
     cv1_dest = CV_DEST_NONE;
     cv2_dest = CV_DEST_NONE;
+
+    mute = false;
 
     pattern.Init(DEFAULT_PATTERN);
 
@@ -192,7 +193,8 @@ public:
 
     int dest_mod = _calculateMod(CV_DEST_MOD, cv1_val, cv2_val,
                                  -(MOD_CHOICE_SIZE / 2), MOD_CHOICE_SIZE / 2);
-    cvmod_clock_mod_index = constrain(base_clock_mod_index + dest_mod, 0, 100);
+    cvmod_clock_mod_index =
+        constrain(base_clock_mod_index + dest_mod, 0, MOD_CHOICE_SIZE - 1);
 
     int step_mod =
         _calculateMod(CV_DEST_EUC_STEPS, cv1_val, cv2_val, 0, MAX_PATTERN_LEN);
