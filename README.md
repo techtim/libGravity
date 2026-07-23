@@ -197,3 +197,7 @@ host-tested; verify those on hardware. To add a suite, drop a new
 
 `.github/workflows/ci.yml` runs the native unit tests and compiles both firmwares
 for the Arduino Nano on every push and pull request.
+
+Pushing a version tag (e.g. `git tag v2.0.2 && git push origin v2.0.2`) additionally
+builds the firmware and publishes a GitHub Release with the compiled `.hex` files
+attached (`gravity-euclidean-<tag>.hex` and `gravity-classic-<tag>.hex`).
