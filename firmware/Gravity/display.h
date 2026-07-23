@@ -344,14 +344,22 @@ void DisplayMainPage() {
       break;
     }
     break;
-  case PARAM_MAIN_ENCODER_DIR:
+  case PARAM_MAIN_ENCODER_DIR: {
     mainText = F("DIR");
-    subText = app.selected_sub_param == 0 ? F("DEFAULT") : F("REVERSED");
+    // While editing show the pending selection; otherwise the actual setting.
+    bool reversed = app.editing_param ? (app.selected_sub_param == 1)
+                                      : app.encoder_reversed;
+    subText = reversed ? F("REVERSED") : F("DEFAULT");
     break;
-  case PARAM_MAIN_ROTATE_DISP:
-    mainText = F("DISP");
-    subText = app.selected_sub_param == 0 ? F("DEFAULT") : F("ROTATED");
+  }
+  case PARAM_MAIN_ROTATE_DISP: {
+    // The large font has no 'P' glyph, so use "ROT" rather than "DISP".
+    mainText = F("ROT");
+    bool rotated = app.editing_param ? (app.selected_sub_param == 1)
+                                     : app.rotate_display;
+    subText = rotated ? F("ROTATED") : F("DEFAULT");
     break;
+  }
   case PARAM_MAIN_SAVE_DATA:
   case PARAM_MAIN_LOAD_DATA:
     if (app.selected_sub_param == StateManager::MAX_SAVE_SLOTS) {

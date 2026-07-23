@@ -129,26 +129,42 @@ public:
 
   // Getters (Get the BASE value for editing or cv modded value for display)
 
+  // Only report the cv-modulated value when a CV is actually routed to the
+  // given parameter; otherwise the stored cvmod value may be stale (e.g. left
+  // over after loading a slot) and would display as a wrong/"random" value.
+  inline bool isCvDestActive(CvDestination dest) const  __attribute__((always_inline)) {
+    return cv1_dest == dest || cv2_dest == dest;
+  }
+  inline bool isCvModActive() const  __attribute__((always_inline)) {
+    return cv1_dest != CV_DEST_NONE || cv2_dest != CV_DEST_NONE;
+  }
   int getProbability(bool withCvMod = false) const {
-    return withCvMod ? cvmod_probability : base_probability;
+    return (withCvMod && isCvDestActive(CV_DEST_PROB))
+      ? cvmod_probability
+      : base_probability;
   }
   int getDutyCycle(bool withCvMod = false) const {
-    return withCvMod ? cvmod_duty_cycle : base_duty_cycle;
+    return (withCvMod && isCvDestActive(CV_DEST_DUTY))
+      ? cvmod_duty_cycle
+      : base_duty_cycle;
   }
   int getOffset(bool withCvMod = false) const {
-    return withCvMod ? cvmod_offset : base_offset;
+    return (withCvMod && isCvDestActive(CV_DEST_OFFSET))
+      ? cvmod_offset
+      : base_offset;
   }
   int getSwing(bool withCvMod = false) const {
-    return withCvMod ? cvmod_swing : base_swing;
+    return (withCvMod && isCvDestActive(CV_DEST_SWING))
+      ? cvmod_swing
+      : base_swing;
   }
   int getClockMod(bool withCvMod = false) const {
     return pgm_read_word_near(&CLOCK_MOD[getClockModIndex(withCvMod)]);
   }
   int getClockModIndex(bool withCvMod = false) const {
-    return withCvMod ? cvmod_clock_mod_index : base_clock_mod_index;
-  }
-  bool isCvModActive() const {
-    return cv1_dest != CV_DEST_NONE || cv2_dest != CV_DEST_NONE;
+    return (withCvMod && isCvDestActive(CV_DEST_MOD))
+      ? cvmod_clock_mod_index
+      : base_clock_mod_index;
   }
 
   void toggleMute() { mute = !mute; }
@@ -214,10 +230,10 @@ public:
     // significant CPU cost, which may have undesirable performance issues.
     if (!isCvModActive()) {
       cvmod_clock_mod_index = base_clock_mod_index;
-      cvmod_probability = base_clock_mod_index;
-      cvmod_duty_cycle = base_clock_mod_index;
-      cvmod_offset = base_clock_mod_index;
-      cvmod_swing = base_clock_mod_index;
+      cvmod_probability = base_probability;
+      cvmod_duty_cycle = base_duty_cycle;
+      cvmod_offset = base_offset;
+      cvmod_swing = base_swing;
       return;
     }
 
