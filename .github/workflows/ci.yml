@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit-tests:
+    name: Native unit tests (ArduinoFake)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+      - name: Run tests
+        run: pio test -e native
+
+  firmware-build:
+    name: Build firmware (Arduino Nano)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+      - name: Build Euclidean firmware
+        run: pio run -e nano
+      - name: Build Gravity firmware
+        # src_dir defaults to firmware/Euclidean; override it to compile-check
+        # the second sketch with the same toolchain and library.
+        env:
+          PLATFORMIO_SRC_DIR: firmware/Gravity
+        run: pio run -e nano
+
+  release:
+    name: Release firmware
+    # Only run on tag pushes (e.g. `git tag v2.0.2 && git push --tags`), and only
+    # after the tests and firmware builds pass.
+    needs: [unit-tests, firmware-build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required to create the release and upload assets
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build Euclidean firmware
+        run: |
+          pio run -e nano
+          cp .pio/build/nano/firmware.hex gravity-euclidean-${{ github.ref_name }}.hex
+
+      - name: Build Gravity firmware
+        env:
+          PLATFORMIO_SRC_DIR: firmware/Gravity
+        run: |
+          # Remove the prior env output so the hex corresponds to this sketch.
+          rm -rf .pio/build/nano
+          pio run -e nano
+          cp .pio/build/nano/firmware.hex gravity-classic-${{ github.ref_name }}.hex
+
+      - name: Create GitHub release with firmware artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gravity-euclidean-${{ github.ref_name }}.hex
+            gravity-classic-${{ github.ref_name }}.hex
+          generate_release_notes: true

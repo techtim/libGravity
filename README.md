@@ -23,6 +23,33 @@ Common directory locations:
 * [uClock](https://github.com/midilab/uClock) [MIT] - (Included with this repo) Handle clock tempo, external clock input, and internal clock timer handler.
 * [RotateEncoder](https://github.com/mathertel/RotaryEncoder) [BSD] - Library for reading and interpreting encoder rotation.
 * [U8g2](https://github.com/olikraus/u8g2/) [MIT] - Graphics helper library.
+* [NeoHWSerial](https://github.com/gicking/NeoHWSerial) [MIT] - Drop-in replacement for the Arduino built-in class HardwareSerial
+
+## Repository Layout
+
+```
+src/                     libGravity hardware abstraction library
+  libGravity.h/.cpp        Gravity umbrella class (display, clock, I/O objects)
+  analog_input.h           AnalogInput  - CV inputs (calibration, gate/edge detect)
+  button.h                 Button       - debounced buttons with press/long-press
+  digital_output.h         DigitalOutput- gate/trigger + LED outputs
+  encoder.h                Encoder      - rotary encoder (wraps RotaryEncoder)
+  clock.h                  Clock        - tempo/source wrapper around uClock + MIDI
+  peripherials.h           Arduino pin map for the Gravity module
+  uClock/                  Vendored uClock library (AVR timer clock engine)
+firmware/
+  Gravity/                 Alt firmware: probability / duty / offset / swing channels
+  Euclidean/               Alt firmware: Euclidean rhythm generator channels
+examples/                  Small standalone sketches demonstrating the library
+test/                      Host unit tests (PlatformIO + ArduinoFake, see below)
+  native_compat/           Host-only shims for AVR headers (util/atomic, pgmspace)
+```
+
+The peripheral classes in `src/` are header-only and depend only on the Arduino
+core, so they can be unit-tested on the host. Each firmware's `channel.h` includes
+`digital_output.h` directly (rather than the full `<libGravity.h>` umbrella, which
+pulls in U8g2 / NeoHWSerial / uClock) so the pure channel logic compiles and tests
+off-target.
 
 ## Example
 
@@ -122,3 +149,55 @@ void UpdateDisplay() {
 ```
 $ arduino-cli compile -v -b  arduino:avr:nano ./firmware/Gravity/Gravity.ino -e --output-dir=./build/
 ```
+
+## Testing
+
+Unit tests run on the host (no board required) using
+[PlatformIO](https://platformio.org/) with the [ArduinoFake](https://github.com/FabioBatSilva/ArduinoFake)
+mock of the Arduino core and the Unity test framework. AVR-only headers used by the
+firmware (`<util/atomic.h>`, `<avr/pgmspace.h>`) are satisfied by the host-only shims
+in `test/native_compat/`, so the real target build still uses the genuine headers.
+
+Install PlatformIO Core once:
+
+```
+$ pip install --upgrade platformio
+```
+
+Run the host unit tests:
+
+```
+$ pio test -e native
+```
+
+Build the firmware for an Arduino Nano (the `nano` env; set `board = nanoatmega328`
+in `platformio.ini` for older 57600-baud bootloader Nanos):
+
+```
+$ pio run -e nano                              # builds firmware/Euclidean
+$ PLATFORMIO_SRC_DIR=firmware/Gravity pio run -e nano   # builds firmware/Gravity
+$ pio run -e nano -t upload                     # flash the connected board
+```
+
+### What's covered
+
+| Suite | Under test |
+| --- | --- |
+| `test/test_pattern` | Euclidean rhythm generation (`Pattern`) |
+| `test/test_channel` | Channel clock-mod / steps / hits clamping and mute |
+| `test/test_digital_output` | Gate/trigger state and trigger-duration release |
+| `test/test_button` | Debounce, press, and long-press callbacks |
+| `test/test_analog_input` | CV mapping, attenuation, and rising-edge detection |
+
+The interrupt-driven `Clock` (uClock + serial MIDI) and the U8g2 display are not
+host-tested; verify those on hardware. To add a suite, drop a new
+`test/test_<name>/test_<name>.cpp` and PlatformIO will build and run it.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs the native unit tests and compiles both firmwares
+for the Arduino Nano on every push and pull request.
+
+Pushing a version tag (e.g. `git tag v2.0.2 && git push origin v2.0.2`) additionally
+builds the firmware and publishes a GitHub Release with the compiled `.hex` files
+attached (`gravity-euclidean-<tag>.hex` and `gravity-classic-<tag>.hex`).
