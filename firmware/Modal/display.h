@@ -129,6 +129,8 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_TEMPO,
   PARAM_MAIN_RUN,
   PARAM_MAIN_RESET,
+  PARAM_MAIN_CV1_RANGE,
+  PARAM_MAIN_CV2_RANGE,
   PARAM_MAIN_SOURCE,
   PARAM_MAIN_PULSE,
   PARAM_MAIN_ENCODER_DIR,
@@ -287,6 +289,20 @@ void DisplayMainPage() {
     case 3: copyP(g_sub, sizeof(g_sub), F("EXT TRIG")); break;
     }
     break;
+  case PARAM_MAIN_CV1_RANGE: {
+    copyP(g_main, sizeof(g_main), F("CV1"));
+    bool uni = app.editing_param ? (app.selected_sub_param == 1)
+                                 : app.cv1_unipolar;
+    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
+    break;
+  }
+  case PARAM_MAIN_CV2_RANGE: {
+    copyP(g_main, sizeof(g_main), F("CV2"));
+    bool uni = app.editing_param ? (app.selected_sub_param == 1)
+                                 : app.cv2_unipolar;
+    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
+    break;
+  }
   case PARAM_MAIN_SOURCE:
     copyP(g_main, sizeof(g_main), F("EXT"));
     switch (app.selected_source) {
@@ -366,9 +382,11 @@ void DisplayMainPage() {
 
   // Draw Main Page menu items
   const __FlashStringHelper *menu_items[PARAM_MAIN_LAST] = {
-      F("TEMPO"),     F("RUN"),         F("RESTART"),     F("SOURCE"),
-      F("PULSE OUT"), F("ENCODER DIR"), F("ROTATE DISP"), F("SAVE"),
-      F("LOAD"),      F("RESET"),       F("ERASE")};
+      F("TEMPO"),     F("RUN"),         F("RESTART"),
+      F("CV1 RANGE"), F("CV2 RANGE"),   F("SOURCE"),
+      F("PULSE OUT"), F("ENCODER DIR"), F("ROTATE DISP"),
+      F("SAVE"),      F("LOAD"),        F("RESET"),
+      F("ERASE")};
   drawMenuItems(menu_items, PARAM_MAIN_LAST);
 }
 

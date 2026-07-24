@@ -11,7 +11,8 @@
 
 const char StateManager::SKETCH_NAME[] = "GRAVITY MODAL";
 const char StateManager::SEMANTIC_VERSION[] =
-    "V2.0.2"; // NOTE: keep in sync with library.properties.
+    "V2.0.3"; // NOTE: keep in sync with library.properties. Bumped for the CV
+              // range fields added to Metadata (forces a one-time reset).
 
 const byte StateManager::MAX_SAVE_SLOTS = 10;
 const byte StateManager::TRANSIENT_SLOT = 10;
@@ -192,6 +193,8 @@ void StateManager::_saveMetadata(const AppState &app) {
   current_meta.selected_save_slot = app.selected_save_slot;
   current_meta.encoder_reversed = app.encoder_reversed;
   current_meta.rotate_display = app.rotate_display;
+  current_meta.cv1_unipolar = app.cv1_unipolar;
+  current_meta.cv2_unipolar = app.cv2_unipolar;
   EEPROM.put(METADATA_START_ADDR, current_meta);
 }
 
@@ -201,4 +204,6 @@ void StateManager::_loadMetadata(AppState &app) {
   app.selected_save_slot = metadata.selected_save_slot;
   app.encoder_reversed = metadata.encoder_reversed;
   app.rotate_display = metadata.rotate_display;
+  app.cv1_unipolar = metadata.cv1_unipolar;
+  app.cv2_unipolar = metadata.cv2_unipolar;
 }

@@ -87,18 +87,26 @@ void setup() {
   gravity.play_button.AttachPressHandler(HandlePlayPressed);
 }
 
+// Normalize a CV reading (AnalogInput::Read() is bipolar, -512..+512, 0V at 0)
+// to a modulation value per the input's configured range:
+//   BIPOLAR  (-5..+5V): pass through; 0V = no modulation, ends = full +/-.
+//   UNIPOLAR (0..+5V):  the positive half (0..512) is remapped to the full -512..+512 span
+int cvModValue(int read, bool unipolar) {
+  return !unipolar ? read : 2 * constrain(read, 0, 512) - 512;
+}
+
 void loop() {
   // Process change in state of inputs and outputs.
   gravity.Process();
 
-  // Read CVs and call the update function for each channel.
-  int cv1 = gravity.cv1.Read();
-  int cv2 = gravity.cv2.Read();
+  // Read CVs and call the update function for each channel. The modulation
+  // value is normalized to the input's configured range (see cvModValue).
+  int cv1 = cvModValue(gravity.cv1.Read(), app.cv1_unipolar);
+  int cv2 = cvModValue(gravity.cv2.Read(), app.cv2_unipolar);
 
   for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     auto &ch = app.channel[i];
-    // Only apply CV to the channel when the current channel has cv
-    // mod configured.
+    // Only apply CV to the channel when the current channel has cv mod configured.
     if (ch.isCvActive()) {
       ch.applyCvMod(cv1, cv2);
     }
@@ -183,9 +191,7 @@ void HandleExtClockTick() {
   switch (app.selected_source) {
   case Clock::SOURCE_INTERNAL:
   case Clock::SOURCE_EXTERNAL_MIDI:
-    // EXT is not the clock source here. Only act as a reset when the user has
-    // routed cv_reset to EXT; otherwise ignore the input entirely (a connected
-    // EXT signal must not disturb INTERNAL/MIDI playback).
+    // EXT is not the clock source here. Only act as a reset when user has routed cv_reset to EXT
     if (app.cv_reset == CV_RESET_EXT) {
       ResetOutputs();
       gravity.clock.Reset();
@@ -234,6 +240,12 @@ void ExitEditing() {
     case PARAM_MAIN_ROTATE_DISP:
       app.rotate_display = app.selected_sub_param == 1;
       gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
+      break;
+    case PARAM_MAIN_CV1_RANGE:
+      app.cv1_unipolar = app.selected_sub_param == 1;
+      break;
+    case PARAM_MAIN_CV2_RANGE:
+      app.cv2_unipolar = app.selected_sub_param == 1;
       break;
     case PARAM_MAIN_SAVE_DATA:
       if (app.selected_sub_param < StateManager::MAX_SAVE_SLOTS) {
@@ -288,6 +300,12 @@ void EnterEditing() {
       break;
     case PARAM_MAIN_ROTATE_DISP:
       app.selected_sub_param = app.rotate_display ? 1 : 0;
+      break;
+    case PARAM_MAIN_CV1_RANGE:
+      app.selected_sub_param = app.cv1_unipolar ? 1 : 0;
+      break;
+    case PARAM_MAIN_CV2_RANGE:
+      app.selected_sub_param = app.cv2_unipolar ? 1 : 0;
       break;
     default:
       break;
@@ -397,6 +415,12 @@ void editMainParameter(int val) {
     updateSelection(app.selected_sub_param, val, 2);
     break;
   case PARAM_MAIN_ROTATE_DISP:
+    updateSelection(app.selected_sub_param, val, 2);
+    break;
+  case PARAM_MAIN_CV1_RANGE:
+    updateSelection(app.selected_sub_param, val, 2);
+    break;
+  case PARAM_MAIN_CV2_RANGE:
     updateSelection(app.selected_sub_param, val, 2);
     break;
   case PARAM_MAIN_SAVE_DATA:

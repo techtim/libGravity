@@ -34,6 +34,9 @@ struct AppState {
   bool encoder_reversed = false;
   bool rotate_display = false;
   bool refresh_screen = true;
+  // CV input range: false = bipolar (-5..+5V), true = unipolar (0..+5V).
+  bool cv1_unipolar = false;
+  bool cv2_unipolar = false;
 };
 
 extern AppState app;

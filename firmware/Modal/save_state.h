@@ -38,6 +38,8 @@ public:
     byte selected_save_slot;
     bool encoder_reversed;
     bool rotate_display;
+    bool cv1_unipolar;
+    bool cv2_unipolar;
   };
   // Per-channel persisted record. flags bit0 = mute.
   struct ChannelState {
