@@ -85,9 +85,8 @@ public:
   // Set the source of the clock mode.
   void SetSource(Source source) {
     bool was_playing = !IsPaused();
-    uClock.stop();
-    // If we are changing the source from MIDI, disable the serial interrupt
-    // handler.
+    Stop();
+    // If we are changing the source from MIDI, disable the serial interrupt handler.
     if (source_ == SOURCE_EXTERNAL_MIDI) {
       NeoSerial.attachInterrupt(serialEventNoop);
     }
@@ -121,8 +120,11 @@ public:
     default:
       break;
     }
+    
+    Reset();
+
     if (was_playing) {
-      uClock.start();
+      Start();
     }
   }
 
