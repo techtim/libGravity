@@ -284,6 +284,7 @@ void DisplayMainPage() {
     case 0: copyP(g_sub, sizeof(g_sub), F("NONE")); break;
     case 1: copyP(g_sub, sizeof(g_sub), F("CV1 TRIG")); break;
     case 2: copyP(g_sub, sizeof(g_sub), F("CV2 TRIG")); break;
+    case 3: copyP(g_sub, sizeof(g_sub), F("EXT TRIG")); break;
     }
     break;
   case PARAM_MAIN_SOURCE:
@@ -472,7 +473,11 @@ void DisplaySelectedChannel() {
     } else {
       gravity.display.setFont(TEXT_FONT);
       gravity.display.setCursor((i * boxWidth) + textOffset, SCREEN_HEIGHT - 3);
-      gravity.display.print(i);
+      if (app.channel[i-1].isMuted()) {
+        gravity.display.print("M");
+      } else {
+        gravity.display.print(i);
+      }
     }
   }
 }

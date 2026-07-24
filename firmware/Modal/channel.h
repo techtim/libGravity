@@ -27,6 +27,10 @@ public:
     cv1_target_ = CV_NONE;
     cv2_target_ = CV_NONE;
     mute_ = false;
+    phase_ = 0;
+    beat_ = 0;
+    last_tick_ = 0;
+    last_mod_ = 0; // 0 != any real mod_pulses -> recompute on the first tick
     _funcReset();
     _funcFinalize(clockModPulses(cvmod_clock_mod_index_));
   }
@@ -145,13 +149,38 @@ public:
 
   /**
    * @brief Process a clock tick. Called from the internal clock ISR - keep tight.
+   *
+   * Maintains phase_/beat_ incrementally instead of doing a 32-bit
+   * tick % mod_pulses / tick / mod_pulses per call. Alignment with the master
+   * clock is preserved without extra reset plumbing: uClock emits tick == 0 on
+   * every start/reset, which re-zeros the counter, so phase_ == tick % mod_pulses
+   * and beat_ == tick / mod_pulses hold exactly (for a constant mod_pulses).
    */
   void processClockTick(uint32_t tick, DigitalOutput &output) {
     if (mute_) {
       output.Low();
       return;
     }
-    StepContext ctx{tick, clockModPulses(cvmod_clock_mod_index_), output};
+    const uint16_t mod_pulses = clockModPulses(cvmod_clock_mod_index_);
+    // Compute phase = tick % mod_pulses and beat = tick / mod_pulses without a
+    // 32-bit divide on the hot path. The INTERNAL clock advances the tick by
+    // exactly 1 each call, so we step the cached counter. EXTERNAL / MIDI clocks
+    // jump the tick to resync (and a reset restarts it), and the clock-mod can
+    // change, so on any discontinuity we recompute from the tick. This is
+    // exactly equivalent to tick % / tick / , just cheaper while free-running.
+    if (tick == last_tick_ + 1 && mod_pulses == last_mod_) {
+      if (++phase_ >= mod_pulses) {
+        phase_ = 0;
+        ++beat_;
+      }
+    } else {
+      phase_ = tick % mod_pulses;
+      beat_ = tick / mod_pulses;
+    }
+    last_tick_ = tick;
+    last_mod_ = mod_pulses;
+
+    StepContext ctx{phase_, mod_pulses, beat_, output};
     switch (func_) {
 #define X(E, M, T) case E: state_.M.process(ctx); break;
       FUNC_LIST(X)
@@ -260,6 +289,12 @@ private:
   CvTarget cv1_target_;
   CvTarget cv2_target_;
   bool mute_;
+  // Per-channel clock-mod phase counter (avoids 32-bit tick % / divide on the
+  // hot path). last_tick_/last_mod_ detect discontinuities that force a recompute.
+  uint16_t phase_;
+  uint16_t beat_;
+  uint32_t last_tick_;
+  uint16_t last_mod_;
   FuncState state_;
 };
 

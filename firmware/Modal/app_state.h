@@ -9,6 +9,15 @@
 
 #include "channel.h"
 
+// cv_reset source values.
+enum CvReset : uint8_t {
+  CV_RESET_NONE,
+  CV_RESET_CV1 = 1,
+  CV_RESET_CV2 = 2,
+  CV_RESET_EXT = 3,
+  CV_RESET_LAST = 4 // number of choices
+};
+
 // Global state for settings and app behavior.
 struct AppState {
   int tempo = Clock::DEFAULT_TEMPO;
@@ -19,8 +28,8 @@ struct AppState {
   byte selected_save_slot = 0;
   Clock::Source selected_source = Clock::SOURCE_INTERNAL;
   Clock::Pulse selected_pulse = Clock::PULSE_PPQN_24;
-  byte cv_run = 0;
-  byte cv_reset = 0;
+  byte cv_run = 0;   // 0=none, 1=CV1 gate, 2=CV2 gate
+  byte cv_reset = CV_RESET_NONE; // 0=none, 1=CV1 trig, 2=CV2 trig, 3=EXT input
   bool editing_param = false;
   bool encoder_reversed = false;
   bool rotate_display = false;

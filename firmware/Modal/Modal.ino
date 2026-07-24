@@ -118,10 +118,10 @@ void loop() {
     }
   }
 
-  // Clock Reset
-  if ((app.cv_reset == 1 &&
+  // Clock Reset from CV (EXT reset is handled by the EXT pin interrupt).
+  if ((app.cv_reset == CV_RESET_CV1 &&
        gravity.cv1.IsRisingEdge(AnalogInput::GATE_THRESHOLD)) ||
-      (app.cv_reset == 2 &&
+      (app.cv_reset == CV_RESET_CV2 &&
        gravity.cv2.IsRisingEdge(AnalogInput::GATE_THRESHOLD))) {
     gravity.clock.Reset();
   }
@@ -183,15 +183,20 @@ void HandleExtClockTick() {
   switch (app.selected_source) {
   case Clock::SOURCE_INTERNAL:
   case Clock::SOURCE_EXTERNAL_MIDI:
-    // Use EXT as Reset when not used for clock source.
-    ResetOutputs();
-    gravity.clock.Reset();
+    // EXT is not the clock source here. Only act as a reset when the user has
+    // routed cv_reset to EXT; otherwise ignore the input entirely (a connected
+    // EXT signal must not disturb INTERNAL/MIDI playback).
+    if (app.cv_reset == CV_RESET_EXT) {
+      ResetOutputs();
+      gravity.clock.Reset();
+      app.refresh_screen = true;
+    }
     break;
   default:
-    // Register EXT cv clock tick.
+    // EXT is the clock source: register the external tick.
     gravity.clock.Tick();
+    app.refresh_screen = true;
   }
-  app.refresh_screen = true;
 }
 
 //
@@ -211,11 +216,10 @@ void HandlePlayPressed() {
       auto &ch = GetSelectedChannel();
       ch.toggleMute();
     }
-    return;
+  } else {
+    gravity.clock.IsPaused() ? gravity.clock.Start() : gravity.clock.Stop();
+    ResetOutputs();
   }
-
-  gravity.clock.IsPaused() ? gravity.clock.Start() : gravity.clock.Stop();
-  ResetOutputs();
   app.refresh_screen = true;
 }
 
@@ -369,7 +373,7 @@ void editMainParameter(int val) {
     app.cv_run = app.selected_sub_param;
     break;
   case PARAM_MAIN_RESET:
-    updateSelection(app.selected_sub_param, val, 3);
+    updateSelection(app.selected_sub_param, val, CV_RESET_LAST);
     app.cv_reset = app.selected_sub_param;
     break;
   case PARAM_MAIN_SOURCE: {

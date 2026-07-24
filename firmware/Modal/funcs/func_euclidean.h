@@ -129,7 +129,7 @@ struct EuclideanState {
   // 50% duty gate.
   void process(const StepContext &ctx) {
     if (!ctx.output.On()) {
-      if (ctx.tick % ctx.mod_pulses == 0) {
+      if (ctx.phase == 0) {
         if (nextStep() && (prob >= 100 || prob > (uint8_t)random(0, 100)))
           ctx.output.High();
       }
@@ -137,22 +137,19 @@ struct EuclideanState {
     uint16_t duty = ctx.mod_pulses >> 1;
     if (duty == 0)
       duty = 1;
-    if ((ctx.tick + duty) % ctx.mod_pulses == 0)
+    // (tick + duty) % mod == 0  <=>  phase == mod - duty
+    if (ctx.phase == (uint16_t)(ctx.mod_pulses - duty))
       ctx.output.Low();
   }
 
 private:
   bool nextStep() {
-    if (steps == 0)
-      return false;
     bool hit = (bitmap & (1UL << step_index)) != 0;
     step_index = (step_index < steps - 1) ? step_index + 1 : 0;
     return hit;
   }
   void regen() {
     bitmap = 0;
-    if (steps == 0)
-      return;
     byte bucket = 0;
     bitmap |= (1UL << 0);
     for (int i = 1; i < steps; i++) {

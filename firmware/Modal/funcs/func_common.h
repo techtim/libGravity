@@ -29,11 +29,16 @@
 
 #include "digital_output.h"
 
-// Passed to a func's process() each clock tick. mod_pulses already reflects the
-// channel's (CV-modulated) clock division.
+// Passed to a func's process() each clock tick. The Channel derives these from
+// the raw clock tick with a per-channel counter, so funcs compare small phase
+// values instead of doing 32-bit tick % / tick divides in the ISR.
+//   phase = tick % mod_pulses   (position within the current period)
+//   beat  = tick / mod_pulses   (completed periods since the clock reset)
+// mod_pulses already reflects the channel's (CV-modulated) clock division.
 struct StepContext {
-  uint32_t tick;
+  uint16_t phase;
   uint16_t mod_pulses;
+  uint16_t beat;
   DigitalOutput &output;
 };
 

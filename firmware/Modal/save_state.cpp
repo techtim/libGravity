@@ -9,7 +9,7 @@
 
 #include "app_state.h"
 
-const char StateManager::SKETCH_NAME[] = "ALT MODAL";
+const char StateManager::SKETCH_NAME[] = "GRAVITY MODAL";
 const char StateManager::SEMANTIC_VERSION[] =
     "V2.0.2"; // NOTE: keep in sync with library.properties.
 

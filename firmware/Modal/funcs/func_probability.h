@@ -18,6 +18,10 @@ struct ProbabilityState {
   uint16_t _duty_pulses;
   uint16_t _offset_pulses;
   uint16_t _swing_pulse_amount;
+  // Precomputed gate phases (from finalize) so the ISR does only compares -
+  // "_sw" variants apply on swung (odd) beats.
+  uint16_t _high_phase, _high_phase_sw;
+  uint16_t _low_phase, _low_phase_sw;
   // Persisted (base) params.
   uint8_t base_prob;
   uint8_t base_duty;
@@ -100,6 +104,18 @@ struct ProbabilityState {
     } else {
       _swing_pulse_amount = 0;
     }
+    // Precompute the phase at which the gate goes high/low (with and without
+    // swing) so process() needs no 32-bit modulo. The gate fires when
+    // (tick + shift) % mod == 0  <=>  phase == (mod - shift % mod) % mod.
+    const uint16_t mod = mod_pulses;
+    _high_phase = (uint16_t)((mod - (_offset_pulses % mod)) % mod);
+    _high_phase_sw =
+        (uint16_t)((mod - ((_offset_pulses + _swing_pulse_amount) % mod)) % mod);
+    _low_phase =
+        (uint16_t)((mod - ((_duty_pulses + _offset_pulses) % mod)) % mod);
+    _low_phase_sw = (uint16_t)(
+        (mod - ((_duty_pulses + _offset_pulses + _swing_pulse_amount) % mod)) %
+        mod);
   }
 
   void save(byte *p) const {
@@ -115,22 +131,17 @@ struct ProbabilityState {
     base_swing = constrain((int)p[3], 50, 95);
   }
 
-  // ISR: probabilistic gate with duty / offset / swing.
+  // ISR: probabilistic gate with duty / offset / swing. Swing shifts the gate
+  // on odd beats (ctx.beat & 1); all timing is a phase compare (no 32-bit ops).
   void process(const StepContext &ctx) {
-    uint16_t swing_pulses = 0;
-    if (_swing_pulse_amount > 0 && (ctx.tick / ctx.mod_pulses) % 2 == 1)
-      swing_pulses = _swing_pulse_amount;
-
-    const uint32_t high_tick = ctx.tick + _offset_pulses + swing_pulses;
+    const bool swing = (_swing_pulse_amount > 0) && (ctx.beat & 1);
     if (!ctx.output.On()) {
-      if (high_tick % ctx.mod_pulses == 0) {
+      if (ctx.phase == (swing ? _high_phase_sw : _high_phase)) {
         if (prob >= random(0, 100))
           ctx.output.High();
       }
     }
-    const uint32_t low_tick =
-        ctx.tick + _duty_pulses + _offset_pulses + swing_pulses;
-    if (low_tick % ctx.mod_pulses == 0)
+    if (ctx.phase == (swing ? _low_phase_sw : _low_phase))
       ctx.output.Low();
   }
 };
