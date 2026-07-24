@@ -366,7 +366,7 @@ void DisplayMainPage() {
 
   // Draw Main Page menu items
   const __FlashStringHelper *menu_items[PARAM_MAIN_LAST] = {
-      F("TEMPO"),     F("RUN"),         F("RST"),         F("SOURCE"),
+      F("TEMPO"),     F("RUN"),         F("RESTART"),     F("SOURCE"),
       F("PULSE OUT"), F("ENCODER DIR"), F("ROTATE DISP"), F("SAVE"),
       F("LOAD"),      F("RESET"),       F("ERASE")};
   drawMenuItems(menu_items, PARAM_MAIN_LAST);
