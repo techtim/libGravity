@@ -50,6 +50,10 @@ jobs:
         env:
           PLATFORMIO_SRC_DIR: firmware/Gravity
         run: pio run -e nano
+      - name: Build Modal firmware
+        env:
+          PLATFORMIO_SRC_DIR: firmware/Modal
+        run: pio run -e nano
 
   release:
     name: Release firmware
@@ -89,10 +93,19 @@ jobs:
           pio run -e nano
           cp .pio/build/nano/firmware.hex gravity-classic-${{ github.ref_name }}.hex
 
+      - name: Build Modal firmware
+        env:
+          PLATFORMIO_SRC_DIR: firmware/Modal
+        run: |
+          rm -rf .pio/build/nano
+          pio run -e nano
+          cp .pio/build/nano/firmware.hex gravity-modal-${{ github.ref_name }}.hex
+
       - name: Create GitHub release with firmware artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
             gravity-euclidean-${{ github.ref_name }}.hex
             gravity-classic-${{ github.ref_name }}.hex
+            gravity-modal-${{ github.ref_name }}.hex
           generate_release_notes: true
