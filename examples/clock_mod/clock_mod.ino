@@ -21,24 +21,24 @@
 
 // Firmware state variables.
 struct Channel {
+    int duty_cycle_pulses = 48;  // 120 x1 96 PPQN
+    int offset_pulses = 0;
     byte clock_mod_index = 7;  // x1
     byte probability = 100;
     byte duty_cycle = 50;
-    int duty_cycle_pulses = 48;  // 120 x1 96 PPQN
     byte offset = 0;
-    int offset_pulses = 0;
 };
 struct AppState {
-    bool refresh_screen = true;
-    bool editing_param = false;
-    int selected_param = 0;
+    byte selected_param = 0;
     byte selected_channel = 0;  // 0=tempo, 1-6=output channel
     Clock::Source selected_source = Clock::SOURCE_INTERNAL;
     Channel channel[Gravity::OUTPUT_COUNT];
+    bool refresh_screen = true;
+    bool editing_param = false;
 };
 AppState app;
 
-enum ParamsMainPage {
+enum ParamsMainPage : uint8_t {
     PARAM_MAIN_TEMPO,
     PARAM_MAIN_SOURCE,
     PARAM_MAIN_LAST,
@@ -49,7 +49,7 @@ const char* MAIN_PAGE_MENU[PARAM_MAIN_LAST] = {
     "Source",
 };
 
-enum ParamsChannelPage {
+enum ParamsChannelPage : uint8_t {
     PARAM_CH_MOD,
     PARAM_CH_PROB,
     PARAM_CH_DUTY,

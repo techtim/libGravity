@@ -22,7 +22,7 @@ class Button {
 
    public:
     // Enum constants for active change in button state.
-    enum ButtonChange {
+    enum ButtonChange : uint8_t {
         CHANGE_UNCHANGED,
         CHANGE_PRESSED,
         CHANGE_RELEASED,
@@ -105,9 +105,9 @@ class Button {
     inline bool On() { return digitalRead(pin_) == 0; }
 
    private:
+    unsigned long last_press_ = 0;
     uint8_t pin_;
     uint8_t old_read_ = 1;
-    unsigned long last_press_ = 0;
     ButtonChange change_ = CHANGE_UNCHANGED;
     CallbackFunction on_press_ = nullptr;
     CallbackFunction on_long_press_ = nullptr;

@@ -78,7 +78,10 @@ void setup() {
   // Encoder rotate and press handlers.
   gravity.encoder.AttachPressHandler(HandleEncoderPressed);
   gravity.encoder.AttachRotateHandler(HandleRotate);
-  gravity.encoder.AttachPressRotateHandler(HandlePressedRotate);
+  // Press + rotate edits the selected parameter's value (momentary editing);
+  // release leaves editing mode. Channel selection is on shift + rotate.
+  gravity.encoder.AttachPressRotateHandler(HandleEncoderHeldRotate);
+  gravity.encoder.AttachPressRotateReleaseHandler(HandleEncoderReleasedAfterRotate);
 
   // Button press handlers.
   gravity.play_button.AttachPressHandler(HandlePlayPressed);
@@ -216,64 +219,65 @@ void HandlePlayPressed() {
   app.refresh_screen = true;
 }
 
-void HandleEncoderPressed() {
-  // Check if leaving editing func should apply a selection.
-  if (app.editing_param) {
-    if (app.selected_channel == 0) { // main page
-      switch (app.selected_param) {
-      case PARAM_MAIN_ENCODER_DIR:
-        app.encoder_reversed = app.selected_sub_param == 1;
-        gravity.encoder.SetReverseDirection(app.encoder_reversed);
-        break;
-      case PARAM_MAIN_ROTATE_DISP:
-        app.rotate_display = app.selected_sub_param == 1;
-        gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
-        break;
-      case PARAM_MAIN_SAVE_DATA:
-        if (app.selected_sub_param < StateManager::MAX_SAVE_SLOTS) {
-          app.selected_save_slot = app.selected_sub_param;
-          stateManager.saveData(app);
-        }
-        break;
-      case PARAM_MAIN_LOAD_DATA:
-        if (app.selected_sub_param < StateManager::MAX_SAVE_SLOTS) {
-          app.selected_save_slot = app.selected_sub_param;
-          // Load pattern data into app state.
-          stateManager.loadData(app, app.selected_save_slot);
-          // Load global performance settings if they have changed.
-          if (gravity.clock.Tempo() != app.tempo) {
-            gravity.clock.SetTempo(app.tempo);
-          }
-          // Load global settings only if clock is not active.
-          if (gravity.clock.IsPaused()) {
-            InitGravity(app);
-          }
-        }
-        break;
-      case PARAM_MAIN_RESET_STATE:
-        if (app.selected_sub_param == 0) { // Reset
-          stateManager.reset(app);
-          InitGravity(app);
-        }
-        break;
-      case PARAM_MAIN_FACTORY_RESET:
-        if (app.selected_sub_param == 0) { // Erase
-          // Show bootsplash during slow erase operation.
-          Bootsplash();
-          stateManager.factoryReset(app);
-          InitGravity(app);
-        }
-        break;
-      default:
-        break;
+// Apply any pending main-page selection, then leave editing mode.
+void ExitEditing() {
+  if (app.selected_channel == 0) { // main page
+    switch (app.selected_param) {
+    case PARAM_MAIN_ENCODER_DIR:
+      app.encoder_reversed = app.selected_sub_param == 1;
+      gravity.encoder.SetReverseDirection(app.encoder_reversed);
+      break;
+    case PARAM_MAIN_ROTATE_DISP:
+      app.rotate_display = app.selected_sub_param == 1;
+      gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
+      break;
+    case PARAM_MAIN_SAVE_DATA:
+      if (app.selected_sub_param < StateManager::MAX_SAVE_SLOTS) {
+        app.selected_save_slot = app.selected_sub_param;
+        stateManager.saveData(app);
       }
+      break;
+    case PARAM_MAIN_LOAD_DATA:
+      if (app.selected_sub_param < StateManager::MAX_SAVE_SLOTS) {
+        app.selected_save_slot = app.selected_sub_param;
+        // Load pattern data into app state.
+        stateManager.loadData(app, app.selected_save_slot);
+        // Load global performance settings if they have changed.
+        if (gravity.clock.Tempo() != app.tempo) {
+          gravity.clock.SetTempo(app.tempo);
+        }
+        // Load global settings only if clock is not active.
+        if (gravity.clock.IsPaused()) {
+          InitGravity(app);
+        }
+      }
+      break;
+    case PARAM_MAIN_RESET_STATE:
+      if (app.selected_sub_param == 0) { // Reset
+        stateManager.reset(app);
+        InitGravity(app);
+      }
+      break;
+    case PARAM_MAIN_FACTORY_RESET:
+      if (app.selected_sub_param == 0) { // Erase
+        // Show bootsplash during slow erase operation.
+        Bootsplash();
+        stateManager.factoryReset(app);
+        InitGravity(app);
+      }
+      break;
+    default:
+      break;
     }
-    // Only mark dirty and reset selected_sub_param when leaving editing func.
-    stateManager.markDirty();
-    app.selected_sub_param = 0;
-  } else if (app.selected_channel == 0) {
-    // Entering edit func: preload the sub-param from the current value for
-    // toggle-style params so editing starts from the actual setting.
+  }
+  stateManager.markDirty();
+  app.selected_sub_param = 0;
+  app.editing_param = false;
+}
+
+// Enter editing mode, preloading toggle-style params from their current value.
+void EnterEditing() {
+  if (app.selected_channel == 0) {
     switch (app.selected_param) {
     case PARAM_MAIN_ENCODER_DIR:
       app.selected_sub_param = app.encoder_reversed ? 1 : 0;
@@ -285,8 +289,31 @@ void HandleEncoderPressed() {
       break;
     }
   }
+  app.editing_param = true;
+}
 
-  app.editing_param = !app.editing_param;
+// Encoder click (no rotation): toggle editing mode (latched).
+void HandleEncoderPressed() {
+  app.editing_param ? ExitEditing() : EnterEditing();
+  app.refresh_screen = true;
+}
+
+// Encoder held + rotated: momentary editing of the selected parameter's value.
+void HandleEncoderHeldRotate(int val) {
+  if (!app.editing_param) {
+    EnterEditing();
+  }
+  if (app.selected_channel == 0) {
+    editMainParameter(val);
+  } else {
+    editChannelParameter(val);
+  }
+  app.refresh_screen = true;
+}
+
+// Encoder released after a held-rotate: leave editing mode.
+void HandleEncoderReleasedAfterRotate() {
+  ExitEditing();
   app.refresh_screen = true;
 }
 
@@ -316,7 +343,14 @@ void HandleRotate(int val) {
 
 void HandlePressedRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
-  app.selected_param = 0;
+  // Keep the selected param when switching channels (fast tweaking of the same
+  // param across channels); clamp it to the new channel's parameter count.
+  int max_param = (app.selected_channel == 0)
+                      ? PARAM_MAIN_LAST
+                      : channelParamCount(GetSelectedChannel());
+  if (app.selected_param >= max_param) {
+    app.selected_param = max_param - 1;
+  }
   stateManager.markDirty();
   app.refresh_screen = true;
 }

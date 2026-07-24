@@ -31,7 +31,25 @@ void test_default_func_and_switching(void) {
   TEST_ASSERT_EQUAL_UINT8(4, ch.paramCount());
   ch.setFunc(FUNC_EUCLIDEAN);
   TEST_ASSERT_EQUAL(FUNC_EUCLIDEAN, ch.getFunc());
-  TEST_ASSERT_EQUAL_UINT8(2, ch.paramCount());
+  TEST_ASSERT_EQUAL_UINT8(3, ch.paramCount()); // steps, hits, prob
+}
+
+// Euclidean gained a PROB param (index 2); default 100 = always fire. Value
+// model + persistence (its ISR roll only calls random() when prob < 100).
+void test_euclidean_prob_param(void) {
+  Channel ch;
+  ch.setFunc(FUNC_EUCLIDEAN);
+  TEST_ASSERT_EQUAL_UINT8(3, ch.paramCount());
+  TEST_ASSERT_EQUAL_INT(100, ch.paramValue(2, false)); // PROB default
+
+  ch.editParam(2, -40); // prob -> 60
+  TEST_ASSERT_EQUAL_INT(60, ch.paramValue(2, false));
+
+  byte payload[FUNC_PAYLOAD_MAX] = {0};
+  ch.saveFunc(payload);
+  ch.editParam(2, 30); // prob -> 90
+  ch.loadFunc(payload);
+  TEST_ASSERT_EQUAL_INT(60, ch.paramValue(2, false)); // restored
 }
 
 // Euclidean E(4,2) at the smallest clock division (mod_pulses = 4) fires on
@@ -112,6 +130,7 @@ int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_default_func_and_switching);
   RUN_TEST(test_euclidean_gate_pattern);
+  RUN_TEST(test_euclidean_prob_param);
   RUN_TEST(test_probability_params);
   RUN_TEST(test_cv_param_targeting);
   RUN_TEST(test_save_load_roundtrip);

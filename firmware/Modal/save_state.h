@@ -70,8 +70,8 @@ private:
   static const int METADATA_START_ADDR;
   static const int EEPROM_DATA_START_ADDR;
 
-  bool _isDirty;
   unsigned long _lastChangeTime;
+  bool _isDirty;
 };
 
 #endif // SAVE_STATE_H

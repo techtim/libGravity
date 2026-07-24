@@ -26,6 +26,8 @@ public:
     pinMode(cv_pin, OUTPUT); // Gate/Trigger Output
     cv_pin_ = cv_pin;
     trigger_duration_ = DEFAULT_TRIGGER_DURATION_MS;
+    on_ = false;
+    last_triggered_ = 0;
   }
 
   /**

@@ -23,7 +23,7 @@ const unsigned long SAVE_DELAY_MS = 5000;
 bool eeprom_needs_save = false;
 unsigned long last_param_change = 0;
 
-enum AppMode { MODE_COMPARATOR, MODE_SETTINGS, MODE_CALIBRATION };
+enum AppMode : uint8_t { MODE_COMPARATOR, MODE_SETTINGS, MODE_CALIBRATION };
 AppMode current_mode = MODE_COMPARATOR;
 byte cal_selected_param = 0; // 0=CV1 Low, 1=CV1 Offset, 2=CV1 High, 3=CV2 Low,
                              // 4=CV2 Offset, 5=CV2 High
@@ -34,11 +34,11 @@ int hysteresis = 4;
 bool display_cv = true;
 bool settings_editing = false;
 
-enum SettingsParameter { SETTING_ENCODER_DIR, SETTING_HYSTERESIS, SETTING_DISPLAY_CV };
+enum SettingsParameter : uint8_t { SETTING_ENCODER_DIR, SETTING_HYSTERESIS, SETTING_DISPLAY_CV };
 SettingsParameter settings_selected_param = SETTING_ENCODER_DIR;
 
 // UI Parameters
-enum Parameter { COMP1_SHIFT, COMP1_SIZE, COMP2_SHIFT, COMP2_SIZE };
+enum Parameter : uint8_t { COMP1_SHIFT, COMP1_SIZE, COMP2_SHIFT, COMP2_SIZE };
 
 Parameter selected_param = COMP1_SHIFT;
 

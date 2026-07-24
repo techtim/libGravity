@@ -30,7 +30,7 @@ class Clock {
 public:
   static constexpr int DEFAULT_TEMPO = 120;
 
-  enum Source {
+  enum Source : uint8_t {
     SOURCE_INTERNAL,
     SOURCE_EXTERNAL_PPQN_24,
     SOURCE_EXTERNAL_PPQN_4,
@@ -40,7 +40,7 @@ public:
     SOURCE_LAST,
   };
 
-  enum Pulse {
+  enum Pulse : uint8_t {
     PULSE_NONE,
     PULSE_PPQN_1,
     PULSE_PPQN_4,

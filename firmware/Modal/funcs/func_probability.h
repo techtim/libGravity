@@ -14,6 +14,10 @@
 #include "func_common.h"
 
 struct ProbabilityState {
+  // Precomputed pulse counts (from finalize()).
+  uint16_t _duty_pulses;
+  uint16_t _offset_pulses;
+  uint16_t _swing_pulse_amount;
   // Persisted (base) params.
   uint8_t base_prob;
   uint8_t base_duty;
@@ -24,10 +28,6 @@ struct ProbabilityState {
   uint8_t duty;
   uint8_t offset;
   uint8_t swing;
-  // Precomputed pulse counts (from finalize()).
-  uint16_t _duty_pulses;
-  uint16_t _offset_pulses;
-  uint16_t _swing_pulse_amount;
 
   void reset() {
     base_prob = 100;
@@ -39,7 +39,7 @@ struct ProbabilityState {
   }
 
   static uint8_t paramCount() { return 4; }
-  static const __FlashStringHelper *funcName(bool full) { return !full ? F("PR") : F("PROBABILITY"); }
+  static const __FlashStringHelper *funcName(bool full) { return !full ? F("%") : F("PROBABILITY"); }
   static const __FlashStringHelper *paramLabel(uint8_t i) {
     switch (i) {
     case 0: return F("PROB");
