@@ -68,10 +68,12 @@ public:
       _funcFinalize(mod_pulses_);
     }
   }
+
   int getClockModIndex(bool withCvMod = false) const {
     return (withCvMod && _targetsClockMod()) ? cvmod_clock_mod_index_
                                              : base_clock_mod_index_;
   }
+
   int getClockMod(bool withCvMod = false) const {
     return clockModValue(getClockModIndex(withCvMod));
   }
@@ -129,9 +131,11 @@ public:
       mod += bipolarMod(cv1_val, -(MOD_CHOICE_SIZE / 2), MOD_CHOICE_SIZE / 2);
     if (cv2_target_ == CV_CLOCK_MOD)
       mod += bipolarMod(cv2_val, -(MOD_CHOICE_SIZE / 2), MOD_CHOICE_SIZE / 2);
-    cvmod_clock_mod_index_ =
-        constrain(base_clock_mod_index_ + mod, 0, MOD_CHOICE_SIZE - 1);
-    _refreshModPulses();
+    if (mod != 0) {
+      cvmod_clock_mod_index_ =
+          constrain(base_clock_mod_index_ + mod, 0, MOD_CHOICE_SIZE - 1);
+      _refreshModPulses();
+    }
 
     // Func params: start from base, then add each routed CV contribution.
     _funcSyncParam();
@@ -164,31 +168,33 @@ public:
       output.Low();
       return;
     }
-    const uint16_t mod_pulses = mod_pulses_; // cached; refreshed off the hot path
+
     // Compute phase = tick % mod_pulses and beat = tick / mod_pulses without a
     // 32-bit divide on the hot path. The INTERNAL clock advances the tick by
     // exactly 1 each call, so we step the cached counter. EXTERNAL / MIDI clocks
     // jump the tick to resync (and a reset restarts it), and the clock-mod can
     // change, so on any discontinuity we recompute from the tick. This is
     // exactly equivalent to tick % / tick / , just cheaper while free-running.
-    if (tick == last_tick_ + 1 && mod_pulses == last_mod_) {
-      if (++phase_ >= mod_pulses) {
+    if (tick == last_tick_ + 1 && mod_pulses_ == last_mod_) {
+      if (++phase_ >= mod_pulses_) {
         phase_ = 0;
         ++beat_;
       }
-    } else {
-      // uClock emits tick == 0 on every start/reset, so treat it as a RESTART:
-      // return the func's playback to the beginning (e.g. euclidean step 0), not
-      // just re-align the clock phase.
-      if (tick == 0)
+    } else if (tick == 0) {
+        // uClock emits tick == 0 on every start/reset, so treat it as a RESTART:
+        // return the func's playback to the beginning (e.g. euclidean step 0), not
+        // just re-align the clock phase.
         _funcResetPlayback();
-      phase_ = tick % mod_pulses;
-      beat_ = tick / mod_pulses;
+        phase_ = 0;
+        beat_ = 0;
+    } else {
+      phase_ = tick % mod_pulses_;
+      beat_ = tick / mod_pulses_;
     }
     last_tick_ = tick;
-    last_mod_ = mod_pulses;
+    last_mod_ = mod_pulses_;
 
-    StepContext ctx{phase_, mod_pulses, beat_, output};
+    StepContext ctx{phase_, mod_pulses_, beat_, output};
     switch (func_) {
 #define X(E, M, T) case E: state_.M.process(ctx); break;
       FUNC_LIST(X)

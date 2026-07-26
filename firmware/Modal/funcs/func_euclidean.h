@@ -117,7 +117,16 @@ struct EuclideanState {
   // of compares. finalize() runs on every param / clock-mod change, so low_phase
   // tracks the current mod_pulses.
   void finalize(uint16_t mod_pulses) {
-    regen();
+    bitmap = 0;
+    byte bucket = 0;
+    bitmap |= (1UL << 0);
+    for (int i = 1; i < steps; i++) {
+      bucket += hits;
+      if (bucket >= steps) {
+        bucket -= steps;
+        bitmap |= (1UL << i);
+      }
+    }
     if (step_index >= steps)
       step_index = 0;
     uint16_t duty = mod_pulses >> 1;
@@ -157,18 +166,6 @@ private:
     bool hit = (bitmap & (1UL << step_index)) != 0;
     step_index = (step_index < steps - 1) ? step_index + 1 : 0;
     return hit;
-  }
-  void regen() {
-    bitmap = 0;
-    byte bucket = 0;
-    bitmap |= (1UL << 0);
-    for (int i = 1; i < steps; i++) {
-      bucket += hits;
-      if (bucket >= steps) {
-        bucket -= steps;
-        bitmap |= (1UL << i);
-      }
-    }
   }
 };
 
