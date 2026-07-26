@@ -19,6 +19,9 @@ struct EuclideanState {
   // Playback state.
   uint32_t bitmap;
   uint8_t step_index;
+  // Phase at which the gate closes (mod_pulses - 50% duty); cached by finalize()
+  // so process() doesn't recompute the duty every tick.
+  uint16_t low_phase;
   // Persisted (base) params.
   uint8_t base_steps;
   uint8_t base_hits;
@@ -36,6 +39,10 @@ struct EuclideanState {
     syncParam();
     finalize(1);
   }
+
+  // Restart the pattern from the beginning without touching params. Called on a
+  // clock (re)start/reset so a RESTART returns the sequence to step 0.
+  void resetPlayback() { step_index = 0; }
 
   static uint8_t paramCount() { return 3; }
   static const __FlashStringHelper *funcName(bool full) {
@@ -106,11 +113,17 @@ struct EuclideanState {
     hits = base_hits;
     prob = base_prob;
   }
-  // mod_pulses is unused: euclidean derives its 50% duty inline in process().
-  void finalize(uint16_t /*mod_pulses*/) {
+  // Cache the gate-close phase (mod_pulses - 50% duty) so process() stays a pair
+  // of compares. finalize() runs on every param / clock-mod change, so low_phase
+  // tracks the current mod_pulses.
+  void finalize(uint16_t mod_pulses) {
     regen();
     if (step_index >= steps)
       step_index = 0;
+    uint16_t duty = mod_pulses >> 1;
+    if (duty == 0)
+      duty = 1;
+    low_phase = mod_pulses - duty;
   }
 
   void save(byte *p) const {
@@ -134,11 +147,8 @@ struct EuclideanState {
           ctx.output.High();
       }
     }
-    uint16_t duty = ctx.mod_pulses >> 1;
-    if (duty == 0)
-      duty = 1;
-    // (tick + duty) % mod == 0  <=>  phase == mod - duty
-    if (ctx.phase == (uint16_t)(ctx.mod_pulses - duty))
+    // Gate closes at the cached 50%-duty phase (precomputed in finalize()).
+    if (ctx.phase == low_phase)
       ctx.output.Low();
   }
 

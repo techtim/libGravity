@@ -42,6 +42,10 @@ struct ProbabilityState {
     finalize(1);
   }
 
+  // No sequence position to restart: the fire decision is derived from the
+  // (re-aligned) clock phase/beat each boundary, so a clock reset needs nothing.
+  void resetPlayback() {}
+
   static uint8_t paramCount() { return 4; }
   static const __FlashStringHelper *funcName(bool full) { return !full ? F("%") : F("PROBABILITY"); }
   static const __FlashStringHelper *paramLabel(uint8_t i) {

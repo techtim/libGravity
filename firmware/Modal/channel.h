@@ -31,8 +31,9 @@ public:
     beat_ = 0;
     last_tick_ = 0;
     last_mod_ = 0; // 0 != any real mod_pulses -> recompute on the first tick
+    _refreshModPulses();
     _funcReset();
-    _funcFinalize(clockModPulses(cvmod_clock_mod_index_));
+    _funcFinalize(mod_pulses_);
   }
 
   // --- Func selection (runtime) ---
@@ -46,7 +47,7 @@ public:
     cv1_target_ = CV_NONE;
     cv2_target_ = CV_NONE;
     _funcReset();
-    _funcFinalize(clockModPulses(cvmod_clock_mod_index_));
+    _funcFinalize(mod_pulses_);
   }
 
   const __FlashStringHelper *funcName(bool full = false) const {
@@ -63,7 +64,8 @@ public:
     base_clock_mod_index_ = constrain(index, 0, MOD_CHOICE_SIZE - 1);
     if (!_targetsClockMod()) {
       cvmod_clock_mod_index_ = base_clock_mod_index_;
-      _funcFinalize(clockModPulses(cvmod_clock_mod_index_));
+      _refreshModPulses();
+      _funcFinalize(mod_pulses_);
     }
   }
   int getClockModIndex(bool withCvMod = false) const {
@@ -108,7 +110,7 @@ public:
     _funcSetBase(i, _funcGetBase(i) + delta);
     if (!_targetsParam(i))
       _funcSetParam(i, _funcGetBase(i));
-    _funcFinalize(clockModPulses(cvmod_clock_mod_index_));
+    _funcFinalize(mod_pulses_);
   }
 
   void toggleMute() { mute_ = !mute_; }
@@ -129,6 +131,7 @@ public:
       mod += bipolarMod(cv2_val, -(MOD_CHOICE_SIZE / 2), MOD_CHOICE_SIZE / 2);
     cvmod_clock_mod_index_ =
         constrain(base_clock_mod_index_ + mod, 0, MOD_CHOICE_SIZE - 1);
+    _refreshModPulses();
 
     // Func params: start from base, then add each routed CV contribution.
     _funcSyncParam();
@@ -144,7 +147,7 @@ public:
       if (amt != 0)
         _funcSetParam(i, _funcGetBase(i) + amt);
     }
-    _funcFinalize(clockModPulses(cvmod_clock_mod_index_));
+    _funcFinalize(mod_pulses_);
   }
 
   /**
@@ -161,7 +164,7 @@ public:
       output.Low();
       return;
     }
-    const uint16_t mod_pulses = clockModPulses(cvmod_clock_mod_index_);
+    const uint16_t mod_pulses = mod_pulses_; // cached; refreshed off the hot path
     // Compute phase = tick % mod_pulses and beat = tick / mod_pulses without a
     // 32-bit divide on the hot path. The INTERNAL clock advances the tick by
     // exactly 1 each call, so we step the cached counter. EXTERNAL / MIDI clocks
@@ -174,6 +177,11 @@ public:
         ++beat_;
       }
     } else {
+      // uClock emits tick == 0 on every start/reset, so treat it as a RESTART:
+      // return the func's playback to the beginning (e.g. euclidean step 0), not
+      // just re-align the clock phase.
+      if (tick == 0)
+        _funcResetPlayback();
       phase_ = tick % mod_pulses;
       beat_ = tick / mod_pulses;
     }
@@ -206,7 +214,7 @@ public:
     default: break;
     }
     _funcSyncParam();
-    _funcFinalize(clockModPulses(cvmod_clock_mod_index_));
+    _funcFinalize(mod_pulses_);
   }
 
 private:
@@ -242,6 +250,17 @@ private:
     default: break;
     }
   }
+  void _funcResetPlayback() {
+    switch (func_) {
+#define X(E, M, T) case E: state_.M.resetPlayback(); break;
+      FUNC_LIST(X)
+#undef X
+    default: break;
+    }
+  }
+  // Cache clockModPulses(cvmod_clock_mod_index_) so the hot path doesn't do a
+  // PROGMEM read every tick. Call after any change to cvmod_clock_mod_index_.
+  void _refreshModPulses() { mod_pulses_ = clockModPulses(cvmod_clock_mod_index_); }
   int _funcGetBase(uint8_t i) const {
     switch (func_) {
 #define X(E, M, T) case E: return state_.M.getBase(i);
@@ -295,6 +314,7 @@ private:
   uint16_t beat_;
   uint32_t last_tick_;
   uint16_t last_mod_;
+  uint16_t mod_pulses_; // cached clockModPulses(cvmod_clock_mod_index_)
   FuncState state_;
 };
 

@@ -71,6 +71,13 @@ void setup() {
   stateManager.initialize(app);
   InitGravity(app);
 
+  // The six channel outputs are gate-driven by the funcs. Use deferred writes so
+  // the clock ISR can decide all channels first and then write the pins together
+  // (minimal skew between channels).
+  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+    gravity.outputs[i].SetDeferred(true);
+  }
+
   // Clock handlers.
   gravity.clock.AttachIntHandler(HandleIntClockTick);
   gravity.clock.AttachExtHandler(HandleExtClockTick);
@@ -131,6 +138,9 @@ void loop() {
        gravity.cv1.IsRisingEdge(AnalogInput::GATE_THRESHOLD)) ||
       (app.cv_reset == CV_RESET_CV2 &&
        gravity.cv2.IsRisingEdge(AnalogInput::GATE_THRESHOLD))) {
+    // Match the EXT reset path: drop any open gates, then restart the clock (the
+    // tick == 0 restart returns each channel's pattern to its start).
+    ResetOutputs();
     gravity.clock.Reset();
   }
 
@@ -148,12 +158,18 @@ void loop() {
 
 void HandleIntClockTick(uint32_t tick) {
   bool refresh = false;
+  // Phase 1: decide every channel's output (deferred - no pins written yet).
   for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].processClockTick(tick, gravity.outputs[i]);
 
     if (app.channel[i].isCvActive()) {
       refresh = true;
     }
+  }
+  // Phase 2: write all six pins in a tight loop so the channels update together
+  // (the per-channel decision cost no longer sits between the pin writes).
+  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+    gravity.outputs[i].Flush();
   }
 
   // Pulse Out gate
@@ -222,6 +238,9 @@ void HandlePlayPressed() {
       auto &ch = GetSelectedChannel();
       ch.toggleMute();
     }
+    // Mute is persisted per channel; without this the transient auto-save never
+    // fires for a mute change and it's lost on power cycle.
+    stateManager.markDirty();
   } else {
     gravity.clock.IsPaused() ? gravity.clock.Start() : gravity.clock.Stop();
     ResetOutputs();
@@ -488,5 +507,6 @@ void InitGravity(AppState &app) {
 void ResetOutputs() {
   for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gravity.outputs[i].Low();
+    gravity.outputs[i].Flush(); // outputs are deferred; write the low immediately
   }
 }
