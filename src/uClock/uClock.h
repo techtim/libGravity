@@ -53,12 +53,12 @@ namespace umodular { namespace clock {
 class uClockClass {
 
     public:
-        enum ClockMode {
+        enum ClockMode : uint8_t {
             INTERNAL_CLOCK = 0,
             EXTERNAL_CLOCK
         };
 
-        enum ClockState {
+        enum ClockState : uint8_t {
             PAUSED = 0,
             STARTING,
             STARTED
@@ -152,9 +152,9 @@ class uClockClass {
         // output and internal counters, ticks and references
         uint32_t tick;
         uint32_t int_clock_tick;
-        uint8_t mod_clock_counter;
         uint16_t mod_clock_ref;
-
+        uint8_t mod_clock_counter;
+    
         uint8_t mod_sync24_counter;
         uint16_t mod_sync24_ref;
         uint32_t sync24_tick;
@@ -171,8 +171,8 @@ class uClockClass {
         ClockMode clock_mode;
 
         volatile uint32_t * ext_interval_buffer = nullptr;
-        uint8_t ext_interval_buffer_size;
         uint16_t ext_interval_idx;
+        uint8_t ext_interval_buffer_size;
 };
 
 } } // end namespace umodular::clock

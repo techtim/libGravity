@@ -129,6 +129,8 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_TEMPO,
   PARAM_MAIN_RUN,
   PARAM_MAIN_RESET,
+  PARAM_MAIN_CV1_RANGE,
+  PARAM_MAIN_CV2_RANGE,
   PARAM_MAIN_SOURCE,
   PARAM_MAIN_PULSE,
   PARAM_MAIN_ENCODER_DIR,
@@ -140,21 +142,33 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_LAST,
 };
 
-// Menu items for editing channel parameters.
-enum ParamsChannelPage : uint8_t {
-  PARAM_CH_MOD,
-  PARAM_CH_EUC_STEPS,
-  PARAM_CH_EUC_HITS,
-  PARAM_CH_CV1_DEST,
-  PARAM_CH_CV2_DEST,
-  PARAM_CH_LAST,
-};
+// (Channel-page params are dynamic; see app_state.h ChannelParamFixed + the
+// func's own params. There is no fixed ParamsChannelPage enum.)
+
+// Scratch text buffers. We avoid the Arduino String class here: on AVR it pulls
+// in operator+, number formatting and the heap (~1.5KB of flash). Building the
+// two on-screen lines into fixed buffers keeps the Modal firmware within flash.
+static char g_main[16];
+static char g_sub[20];
+
+// Copy a flash (PROGMEM) string into a RAM buffer for u8g2 text functions.
+inline void copyP(char *dst, size_t n, const __FlashStringHelper *f) {
+  strncpy_P(dst, reinterpret_cast<PGM_P>(f), n - 1);
+  dst[n - 1] = '\0';
+}
 
 // Helper function to draw centered text
 void drawCenteredText(const char *text, int y, const uint8_t *font) {
   gravity.display.setFont(font);
   int textWidth = gravity.display.getStrWidth(text);
   gravity.display.drawStr(SCREEN_CENTER_X - (textWidth / 2), y, text);
+}
+
+// Draw a centered flash string.
+void drawCenteredTextP(const __FlashStringHelper *f, int y,
+                       const uint8_t *font) {
+  copyP(g_sub, sizeof(g_sub), f);
+  drawCenteredText(g_sub, y, font);
 }
 
 // Helper function to draw right-aligned text
@@ -182,7 +196,7 @@ void drawMainSelection() {
   gravity.display.setDrawColor(2);
 }
 
-void drawMenuItems(String menu_items[], int menu_size) {
+void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
   // Draw menu items
   gravity.display.setFont(TEXT_FONT);
 
@@ -216,8 +230,8 @@ void drawMenuItems(String menu_items[], int menu_size) {
 
   for (int i = 0; i < min(menu_size, VISIBLE_MENU_ITEMS); ++i) {
     int idx = start_index + i;
-    drawRightAlignedText(menu_items[idx].c_str(),
-                         MENU_ITEM_HEIGHT * (i + 1) - 1);
+    copyP(g_sub, sizeof(g_sub), menu_items[idx]);
+    drawRightAlignedText(g_sub, MENU_ITEM_HEIGHT * (i + 1) - 1);
   }
 }
 
@@ -225,13 +239,15 @@ void drawMenuItems(String menu_items[], int menu_size) {
 inline void solidTick() { gravity.display.drawBox(56, 4, 4, 4); }
 inline void hollowTick() { gravity.display.drawBox(56, 4, 4, 4); }
 
-// Human friendly display value for save slot.
-String displaySaveSlot(int slot) {
-  if (slot >= 0 && slot < StateManager::MAX_SAVE_SLOTS / 2) {
-    return String("A") + String(slot + 1);
-  } else if (slot >= StateManager::MAX_SAVE_SLOTS / 2 &&
-             slot <= StateManager::MAX_SAVE_SLOTS) {
-    return String("B") + String(slot - (StateManager::MAX_SAVE_SLOTS / 2) + 1);
+// Human friendly display value for save slot, written into `out` (e.g. "A3").
+void displaySaveSlot(char *out, int slot) {
+  const int half = StateManager::MAX_SAVE_SLOTS / 2;
+  if (slot < half) {
+    out[0] = 'A';
+    itoa(slot + 1, out + 1, 10);
+  } else {
+    out[0] = 'B';
+    itoa(slot - half + 1, out + 1, 10);
   }
 }
 
@@ -242,219 +258,209 @@ void DisplayMainPage() {
   gravity.display.setDrawColor(2);
   gravity.display.setFont(TEXT_FONT);
 
-  // Display selected editable value
-  String mainText;
-  String subText;
+  // Display selected editable value (built into the shared text buffers).
+  g_main[0] = '\0';
+  g_sub[0] = '\0';
 
   switch (app.selected_param) {
   case PARAM_MAIN_TEMPO:
     // Serial MIDI is too unstable to display bpm in real time.
     if (app.selected_source == Clock::SOURCE_EXTERNAL_MIDI) {
-      mainText = F("EXT");
+      copyP(g_main, sizeof(g_main), F("EXT"));
     } else {
-      mainText = String(gravity.clock.Tempo());
+      itoa(gravity.clock.Tempo(), g_main, 10);
     }
-    subText = F("BPM");
+    copyP(g_sub, sizeof(g_sub), F("BPM"));
     break;
   case PARAM_MAIN_RUN:
-    mainText = F("RUN");
+    copyP(g_main, sizeof(g_main), F("RUN"));
     switch (app.cv_run) {
-    case 0:
-      subText = F("NONE");
-      break;
-    case 1:
-      subText = F("CV1 GATE");
-      break;
-    case 2:
-      subText = F("CV2 GATE");
-      break;
+    case 0: copyP(g_sub, sizeof(g_sub), F("NONE")); break;
+    case 1: copyP(g_sub, sizeof(g_sub), F("CV1 GATE")); break;
+    case 2: copyP(g_sub, sizeof(g_sub), F("CV2 GATE")); break;
     }
     break;
   case PARAM_MAIN_RESET:
-    mainText = F("RST");
+    copyP(g_main, sizeof(g_main), F("RST"));
     switch (app.cv_reset) {
-    case 0:
-      subText = F("NONE");
-      break;
-    case 1:
-      subText = F("CV1 TRIG");
-      break;
-    case 2:
-      subText = F("CV2 TRIG");
-      break;
+    case 0: copyP(g_sub, sizeof(g_sub), F("NONE")); break;
+    case 1: copyP(g_sub, sizeof(g_sub), F("CV1 TRIG")); break;
+    case 2: copyP(g_sub, sizeof(g_sub), F("CV2 TRIG")); break;
+    case 3: copyP(g_sub, sizeof(g_sub), F("EXT TRIG")); break;
     }
     break;
+  case PARAM_MAIN_CV1_RANGE: {
+    copyP(g_main, sizeof(g_main), F("CV1"));
+    bool uni = app.editing_param ? (app.selected_sub_param == 1)
+                                 : app.cv1_unipolar;
+    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
+    break;
+  }
+  case PARAM_MAIN_CV2_RANGE: {
+    copyP(g_main, sizeof(g_main), F("CV2"));
+    bool uni = app.editing_param ? (app.selected_sub_param == 1)
+                                 : app.cv2_unipolar;
+    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
+    break;
+  }
   case PARAM_MAIN_SOURCE:
-    mainText = F("EXT");
+    copyP(g_main, sizeof(g_main), F("EXT"));
     switch (app.selected_source) {
     case Clock::SOURCE_INTERNAL:
-      mainText = F("INT");
-      subText = F("CLOCK");
+      copyP(g_main, sizeof(g_main), F("INT"));
+      copyP(g_sub, sizeof(g_sub), F("CLOCK"));
       break;
-    case Clock::SOURCE_EXTERNAL_PPQN_24:
-      subText = F("24 PPQN");
-      break;
-    case Clock::SOURCE_EXTERNAL_PPQN_4:
-      subText = F("4 PPQN");
-      break;
-    case Clock::SOURCE_EXTERNAL_PPQN_2:
-      subText = F("2 PPQN");
-      break;
-    case Clock::SOURCE_EXTERNAL_PPQN_1:
-      subText = F("1 PPQN");
-      break;
-    case Clock::SOURCE_EXTERNAL_MIDI:
-      subText = F("MIDI");
-      break;
+    case Clock::SOURCE_EXTERNAL_PPQN_24: copyP(g_sub, sizeof(g_sub), F("24 PPQN")); break;
+    case Clock::SOURCE_EXTERNAL_PPQN_4: copyP(g_sub, sizeof(g_sub), F("4 PPQN")); break;
+    case Clock::SOURCE_EXTERNAL_PPQN_2: copyP(g_sub, sizeof(g_sub), F("2 PPQN")); break;
+    case Clock::SOURCE_EXTERNAL_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN")); break;
+    case Clock::SOURCE_EXTERNAL_MIDI: copyP(g_sub, sizeof(g_sub), F("MIDI")); break;
     }
     break;
   case PARAM_MAIN_PULSE:
-    mainText = F("OUT");
+    copyP(g_main, sizeof(g_main), F("OUT"));
     switch (app.selected_pulse) {
-    case Clock::PULSE_NONE:
-      subText = F("PULSE OFF");
-      break;
-    case Clock::PULSE_PPQN_24:
-      subText = F("24 PPQN PULSE");
-      break;
-    case Clock::PULSE_PPQN_4:
-      subText = F("4 PPQN PULSE");
-      break;
-    case Clock::PULSE_PPQN_1:
-      subText = F("1 PPQN PULSE");
-      break;
+    case Clock::PULSE_NONE: copyP(g_sub, sizeof(g_sub), F("PULSE OFF")); break;
+    case Clock::PULSE_PPQN_24: copyP(g_sub, sizeof(g_sub), F("24 PPQN PULSE")); break;
+    case Clock::PULSE_PPQN_4: copyP(g_sub, sizeof(g_sub), F("4 PPQN PULSE")); break;
+    case Clock::PULSE_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN PULSE")); break;
     }
     break;
   case PARAM_MAIN_ENCODER_DIR: {
-    mainText = F("DIR");
+    copyP(g_main, sizeof(g_main), F("DIR"));
     // While editing show the pending selection; otherwise the actual setting.
     bool reversed = app.editing_param ? (app.selected_sub_param == 1)
                                       : app.encoder_reversed;
-    subText = reversed ? F("REVERSED") : F("DEFAULT");
+    copyP(g_sub, sizeof(g_sub), reversed ? F("REVERSED") : F("DEFAULT"));
     break;
   }
   case PARAM_MAIN_ROTATE_DISP: {
-    mainText = F("ROT");
+    copyP(g_main, sizeof(g_main), F("ROT"));
     bool rotated = app.editing_param ? (app.selected_sub_param == 1)
                                      : app.rotate_display;
-    subText = rotated ? F("ROTATED") : F("DEFAULT");
+    copyP(g_sub, sizeof(g_sub), rotated ? F("ROTATED") : F("DEFAULT"));
     break;
   }
   case PARAM_MAIN_SAVE_DATA:
   case PARAM_MAIN_LOAD_DATA:
     if (app.selected_sub_param == StateManager::MAX_SAVE_SLOTS) {
-      mainText = F("x");
-      subText = F("BACK TO MAIN");
+      copyP(g_main, sizeof(g_main), F("x"));
+      copyP(g_sub, sizeof(g_sub), F("BACK TO MAIN"));
     } else {
       // Indicate currently active slot.
       if (app.selected_sub_param == app.selected_save_slot) {
         solidTick();
       }
-      mainText = displaySaveSlot(app.selected_sub_param);
-      subText = (app.selected_param == PARAM_MAIN_SAVE_DATA)
-                    ? F("SAVE TO SLOT")
-                    : F("LOAD FROM SLOT");
+      displaySaveSlot(g_main, app.selected_sub_param);
+      copyP(g_sub, sizeof(g_sub),
+            (app.selected_param == PARAM_MAIN_SAVE_DATA) ? F("SAVE TO SLOT")
+                                                         : F("LOAD FROM SLOT"));
     }
     break;
   case PARAM_MAIN_RESET_STATE:
     if (app.selected_sub_param == 0) {
-      mainText = F("RST");
-      subText = F("RESET ALL");
+      copyP(g_main, sizeof(g_main), F("RST"));
+      copyP(g_sub, sizeof(g_sub), F("RESET ALL"));
     } else {
-      mainText = F("x");
-      subText = F("BACK TO MAIN");
+      copyP(g_main, sizeof(g_main), F("x"));
+      copyP(g_sub, sizeof(g_sub), F("BACK TO MAIN"));
     }
     break;
   case PARAM_MAIN_FACTORY_RESET:
     if (app.selected_sub_param == 0) {
-      mainText = F("DEL");
-      subText = F("FACTORY RESET");
+      copyP(g_main, sizeof(g_main), F("DEL"));
+      copyP(g_sub, sizeof(g_sub), F("FACTORY RESET"));
     } else {
-      mainText = F("x");
-      subText = F("BACK TO MAIN");
+      copyP(g_main, sizeof(g_main), F("x"));
+      copyP(g_sub, sizeof(g_sub), F("BACK TO MAIN"));
     }
     break;
   }
 
-  drawCenteredText(mainText.c_str(), MAIN_TEXT_Y, LARGE_FONT);
-  drawCenteredText(subText.c_str(), SUB_TEXT_Y, TEXT_FONT);
+  drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
+  drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
   // Draw Main Page menu items
-  String menu_items[PARAM_MAIN_LAST] = {
-      F("TEMPO"),     F("RUN"),         F("RST"),         F("SOURCE"),
-      F("PULSE OUT"), F("ENCODER DIR"), F("ROTATE DISP"), F("SAVE"),
-      F("LOAD"),      F("RESET"),       F("ERASE")};
+  const __FlashStringHelper *menu_items[PARAM_MAIN_LAST] = {
+      F("TEMPO"),     F("RUN"),         F("RESTART"),
+      F("CV1 RANGE"), F("CV2 RANGE"),   F("SOURCE"),
+      F("PULSE OUT"), F("ENCODER DIR"), F("ROTATE DISP"),
+      F("SAVE"),      F("LOAD"),        F("RESET"),
+      F("ERASE")};
   drawMenuItems(menu_items, PARAM_MAIN_LAST);
 }
 
+// Human-friendly label for a CV routing target on the given channel.
+const __FlashStringHelper *cvTargetLabel(const Channel &ch, CvTarget t) {
+  if (t == CV_NONE)
+    return F("NONE");
+  if (t == CV_CLOCK_MOD)
+    return F("CLOCK MOD");
+  uint8_t i = t - CV_PARAM_0;
+  return (i < ch.paramCount()) ? ch.paramLabel(i) : F("NONE");
+}
+
+// The channel page is func-agnostic: it renders a fixed pair of params (func
+// select, clock mod), then the current func's own params, then the two CV
+// routing targets. Nothing here is func-specific, so new funcs need no edits.
 void DisplayChannelPage() {
   auto &ch = GetSelectedChannel();
 
   gravity.display.setFontMode(1);
   gravity.display.setDrawColor(2);
 
-  // Display selected editable value
-  String mainText;
-  String subText;
+  g_main[0] = '\0';
+  g_sub[0] = '\0';
+  const uint8_t *mainFont = LARGE_FONT;
 
-  // When editing a param, just show the base value. When not editing show
-  // the value with cv mod.
+  // When editing show the base value; otherwise the CV-modulated value.
   bool withCvMod = !app.editing_param;
 
-  switch (app.selected_param) {
-  case PARAM_CH_MOD: {
+  const uint8_t param = app.selected_param;
+  const uint8_t func_params = ch.paramCount();
+  const uint8_t cv1_idx = channelCv1ParamIndex(ch);
+  const uint8_t cv2_idx = channelCv2ParamIndex(ch);
+
+  if (param == CH_PARAM_FUNC) {
+    // Func names use the full alphabet, so render them in the small font.
+    copyP(g_main, sizeof(g_main), ch.funcName(false));
+    copyP(g_sub, sizeof(g_sub), ch.funcName(true));
+  } else if (param == CH_PARAM_CLOCK_MOD) {
     int mod_value = ch.getClockMod(withCvMod);
     if (mod_value > 1) {
-      mainText = F("/");
-      mainText += String(mod_value);
-      subText = F("DIVIDE");
+      g_main[0] = '/';
+      itoa(mod_value, g_main + 1, 10);
+      copyP(g_sub, sizeof(g_sub), F("DIVIDE"));
     } else {
-      mainText = F("x");
-      mainText += String(abs(mod_value));
-      subText = F("MULTIPLY");
+      g_main[0] = 'x';
+      itoa(abs(mod_value), g_main + 1, 10);
+      copyP(g_sub, sizeof(g_sub), F("MULTIPLY"));
     }
-    break;
+  } else if (param < cv1_idx) {
+    // Func parameter.
+    uint8_t i = param - CH_PARAM_FUNC_BASE;
+    itoa(ch.paramValue(i, withCvMod), g_main, 10);
+    copyP(g_sub, sizeof(g_sub), ch.paramLabel(i));
+  } else {
+    // CV1 / CV2 routing target.
+    bool is_cv1 = (param == cv1_idx);
+    copyP(g_main, sizeof(g_main), is_cv1 ? F("CV1") : F("CV2"));
+    copyP(g_sub, sizeof(g_sub),
+          cvTargetLabel(ch, is_cv1 ? ch.getCv1Target() : ch.getCv2Target()));
   }
 
-  case PARAM_CH_EUC_STEPS:
-    mainText = String(ch.getSteps(withCvMod));
-    subText = "EUCLID STEPS";
-    break;
-  case PARAM_CH_EUC_HITS:
-    mainText = String(ch.getHits(withCvMod));
-    subText = "EUCLID HITS";
-    break;
-  case PARAM_CH_CV1_DEST:
-  case PARAM_CH_CV2_DEST: {
-    mainText = (app.selected_param == PARAM_CH_CV1_DEST) ? F("CV1") : F("CV2");
-    switch ((app.selected_param == PARAM_CH_CV1_DEST) ? ch.getCv1Dest()
-                                                      : ch.getCv2Dest()) {
-    case CV_DEST_NONE:
-      subText = F("NONE");
-      break;
-    case CV_DEST_MOD:
-      subText = F("CLOCK MOD");
-      break;
+  drawCenteredText(g_main, MAIN_TEXT_Y, mainFont);
+  drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
-    case CV_DEST_EUC_STEPS:
-      subText = F("EUCLID STEPS");
-      break;
-    case CV_DEST_EUC_HITS:
-      subText = F("EUCLID HITS");
-      break;
-    }
-    break;
-  }
-  }
-
-  drawCenteredText(mainText.c_str(), MAIN_TEXT_Y, LARGE_FONT);
-  drawCenteredText(subText.c_str(), SUB_TEXT_Y, TEXT_FONT);
-
-  // Draw Channel Page menu items
-  String menu_items[PARAM_CH_LAST] = {F("MOD"), F("EUCLID STEPS"),
-                                      F("EUCLID HITS"), F("CV1 MOD"),
-                                      F("CV2 MOD")};
-  drawMenuItems(menu_items, PARAM_CH_LAST);
+  // Build the channel menu items dynamically from the current func.
+  const __FlashStringHelper *menu_items[MAX_CHANNEL_PARAMS];
+  menu_items[CH_PARAM_FUNC] = F("FUNC");
+  menu_items[CH_PARAM_CLOCK_MOD] = F("MOD");
+  for (uint8_t i = 0; i < func_params; i++)
+    menu_items[CH_PARAM_FUNC_BASE + i] = ch.paramLabel(i);
+  menu_items[cv1_idx] = F("CV1 MOD");
+  menu_items[cv2_idx] = F("CV2 MOD");
+  drawMenuItems(menu_items, channelParamCount(ch));
 }
 
 void DisplaySelectedChannel() {
@@ -485,7 +491,11 @@ void DisplaySelectedChannel() {
     } else {
       gravity.display.setFont(TEXT_FONT);
       gravity.display.setCursor((i * boxWidth) + textOffset, SCREEN_HEIGHT - 3);
-      gravity.display.print(i);
+      if (app.channel[i-1].isMuted()) {
+        gravity.display.print("M");
+      } else {
+        gravity.display.print(i);
+      }
     }
   }
 }
@@ -508,7 +518,6 @@ void Bootsplash() {
   gravity.display.firstPage();
   do {
     int textWidth;
-    String loadingText = F("LOADING....");
     gravity.display.setFont(TEXT_FONT);
 
     textWidth = gravity.display.getStrWidth(StateManager::SKETCH_NAME);
@@ -518,8 +527,9 @@ void Bootsplash() {
     gravity.display.drawStr(16 + (textWidth / 2), 32,
                             StateManager::SEMANTIC_VERSION);
 
-    textWidth = gravity.display.getStrWidth(loadingText.c_str());
-    gravity.display.drawStr(26 + (textWidth / 2), 44, loadingText.c_str());
+    copyP(g_main, sizeof(g_main), F("LOADING...."));
+    textWidth = gravity.display.getStrWidth(g_main);
+    gravity.display.drawStr(26 + (textWidth / 2), 44, g_main);
   } while (gravity.display.nextPage());
 }
 

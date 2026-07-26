@@ -26,6 +26,8 @@ public:
     pinMode(cv_pin, OUTPUT); // Gate/Trigger Output
     cv_pin_ = cv_pin;
     trigger_duration_ = DEFAULT_TRIGGER_DURATION_MS;
+    on_ = false;
+    last_triggered_ = 0;
   }
 
   /**
@@ -56,6 +58,18 @@ public:
   inline void Low() { update(LOW); }
 
   /**
+   * Deferred write mode. When enabled, High()/Low()/Update() only track the
+   * logical state; the physical pin is written by Flush(). This lets a firmware
+   * decide all of its outputs first and then write them together, minimizing the
+   * skew between channels. The trigger auto-low (Process) is disabled while
+   * deferred, since deferred outputs are gate-managed by the caller.
+   */
+  void SetDeferred(bool deferred) { deferred_ = deferred; }
+
+  // Write the current logical state to the pin (used in deferred mode).
+  inline void Flush() { digitalWrite(cv_pin_, on_ ? HIGH : LOW); }
+
+  /**
    * Begin a Trigger period for this output.
    */
   inline void Trigger() {
@@ -67,6 +81,10 @@ public:
    * Return a bool representing the on/off state of the output.
    */
   inline void Process() {
+    // Deferred (gate) outputs manage their own low edge, so skip the trigger
+    // auto-low to avoid fighting an externally-driven gate.
+    if (deferred_)
+      return;
     // If trigger is HIGH and the trigger duration time has elapsed, set the
     // output low.
     if (on_ && (millis() - last_triggered_) >= trigger_duration_) {
@@ -86,10 +104,12 @@ private:
   uint8_t trigger_duration_;
   uint8_t cv_pin_;
   bool on_;
+  bool deferred_ = false;
 
   void update(uint8_t state) {
-    digitalWrite(cv_pin_, state);
     on_ = state == HIGH;
+    if (!deferred_)
+      digitalWrite(cv_pin_, state);
   }
 };
 

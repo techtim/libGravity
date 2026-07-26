@@ -40,6 +40,7 @@ src/                     libGravity hardware abstraction library
 firmware/
   Gravity/                 Alt firmware: probability / duty / offset / swing channels
   Euclidean/               Alt firmware: Euclidean rhythm generator channels
+  Modal/                   Unified firmware: each channel picks a func (PROB or EUCLID);
 examples/                  Small standalone sketches demonstrating the library
 test/                      Host unit tests (PlatformIO + ArduinoFake, see below)
   native_compat/           Host-only shims for AVR headers (util/atomic, pgmspace)
@@ -176,6 +177,7 @@ in `platformio.ini` for older 57600-baud bootloader Nanos):
 ```
 $ pio run -e nano                              # builds firmware/Euclidean
 $ PLATFORMIO_SRC_DIR=firmware/Gravity pio run -e nano   # builds firmware/Gravity
+$ PLATFORMIO_SRC_DIR=firmware/Modal   pio run -e nano   # builds firmware/Modal
 $ pio run -e nano -t upload                     # flash the connected board
 ```
 
@@ -188,6 +190,7 @@ $ pio run -e nano -t upload                     # flash the connected board
 | `test/test_digital_output` | Gate/trigger state and trigger-duration release |
 | `test/test_button` | Debounce, press, and long-press callbacks |
 | `test/test_analog_input` | CV mapping, attenuation, and rising-edge detection |
+| `test/test_funcs` | Modal firmware: func switching, per-func params, CV targeting, save/load |
 
 The interrupt-driven `Clock` (uClock + serial MIDI) and the U8g2 display are not
 host-tested; verify those on hardware. To add a suite, drop a new

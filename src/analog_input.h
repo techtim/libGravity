@@ -106,7 +106,6 @@ public:
   }
 
 private:
-  uint8_t pin_;
   int16_t read_ = 0;
   // Must be signed and match read_: the reading is bipolar (-512..512), so a
   // uint16_t here would wrap negative values and break IsRisingEdge().
@@ -115,6 +114,7 @@ private:
   int offset_ = 0;
   int low_ = CALIBRATED_LOW;
   int high_ = CALIBRATED_HIGH;
+  uint8_t pin_;
   bool inverted_ = false;
 };
 

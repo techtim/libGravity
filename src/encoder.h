@@ -23,6 +23,7 @@ class Encoder {
     CallbackFunction on_press;
     CallbackFunction on_long_press;
     RotateCallbackFunction on_press_rotate;
+    CallbackFunction on_press_rotate_release = nullptr;
     RotateCallbackFunction on_rotate;
     int change;
 
@@ -53,9 +54,14 @@ class Encoder {
         on_press_rotate = f;
     }
 
+    // Fires once when the button is released after a press+rotate gesture.
+    void AttachPressRotateReleaseHandler(CallbackFunction f) {
+        on_press_rotate_release = f;
+    }
+
     void Process() {
         // Get encoder position change amount.
-        int encoder_rotated = _rotate_change() != 0;
+        bool encoder_rotated = _rotate_change() != 0;
         bool button_pressed = button_.On();
         button_.Process();
 
@@ -71,9 +77,12 @@ class Encoder {
             if (on_long_press != NULL) on_long_press();
         }
 
-        // Reset rotate while held state.
-        if (button_.Change() == Button::CHANGE_RELEASED && rotated_while_held_) {
+        // Reset rotate while held state, and notify on release after a
+        // press+rotate gesture.
+        if ((button_.Change() == Button::CHANGE_RELEASED || button_.Change() == Button::CHANGE_RELEASED_LONG)
+            && rotated_while_held_) {
             rotated_while_held_ = false;
+            if (on_press_rotate_release != NULL) on_press_rotate_release();
         }
     }
 
@@ -87,11 +96,11 @@ class Encoder {
    private:
     static Encoder* _instance;
 
-    int previous_pos_;
-    bool rotated_while_held_;
-    bool reversed_ = false;
+    int previous_pos_ = 0;
     RotaryEncoder encoder_;
     Button button_;
+    bool rotated_while_held_ = false;
+    bool reversed_ = false;
 
     // Return the number of ticks change since last polled.
     int _rotate_change() {

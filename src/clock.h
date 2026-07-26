@@ -30,7 +30,7 @@ class Clock {
 public:
   static constexpr int DEFAULT_TEMPO = 120;
 
-  enum Source {
+  enum Source : uint8_t {
     SOURCE_INTERNAL,
     SOURCE_EXTERNAL_PPQN_24,
     SOURCE_EXTERNAL_PPQN_4,
@@ -40,7 +40,7 @@ public:
     SOURCE_LAST,
   };
 
-  enum Pulse {
+  enum Pulse : uint8_t {
     PULSE_NONE,
     PULSE_PPQN_1,
     PULSE_PPQN_4,
@@ -85,9 +85,8 @@ public:
   // Set the source of the clock mode.
   void SetSource(Source source) {
     bool was_playing = !IsPaused();
-    uClock.stop();
-    // If we are changing the source from MIDI, disable the serial interrupt
-    // handler.
+    Stop();
+    // If we are changing the source from MIDI, disable the serial interrupt handler.
     if (source_ == SOURCE_EXTERNAL_MIDI) {
       NeoSerial.attachInterrupt(serialEventNoop);
     }
@@ -121,8 +120,11 @@ public:
     default:
       break;
     }
+    
+    Reset();
+
     if (was_playing) {
-      uClock.start();
+      Start();
     }
   }
 

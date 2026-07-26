@@ -89,13 +89,14 @@ public:
   // Euclidean
   void setSteps(int val) {
     base_euc_steps = constrain(val, 1, MAX_PATTERN_LEN);
-    if (cv1_dest != CV_DEST_EUC_STEPS && cv2_dest != CV_DEST_EUC_STEPS) {
+    // Only push the base into the live pattern when a CV isn't driving steps.
+    if (!isCvDestActive(CV_DEST_EUC_STEPS)) {
       pattern.SetSteps(val);
     }
   }
   void setHits(int val) {
     base_euc_hits = constrain(val, 1, base_euc_steps);
-    if (cv1_dest != CV_DEST_EUC_HITS && cv2_dest != CV_DEST_EUC_HITS) {
+    if (!isCvDestActive(CV_DEST_EUC_HITS)) {
       pattern.SetHits(val);
     }
   }
@@ -105,23 +106,33 @@ public:
   CvDestination getCv1Dest() const { return cv1_dest; }
   CvDestination getCv2Dest() const { return cv2_dest; }
 
+  // Only report the cv-modulated value when a CV is actually routed to the
+  // given parameter; otherwise the stored cvmod value may be stale (e.g. left
+  // over after loading a slot) and would display as a wrong/"random" value.
+  inline bool isCvDestActive(CvDestination dest) const  __attribute__((always_inline)) {
+    return cv1_dest == dest || cv2_dest == dest;
+  }
+  inline bool isCvModActive() const  __attribute__((always_inline)) {
+    return cv1_dest != CV_DEST_NONE || cv2_dest != CV_DEST_NONE;
+  }
   // Getters (Get the BASE value for editing or cv modded value for display)
-
   int getClockMod(bool withCvMod = false) const {
     return pgm_read_word_near(&CLOCK_MOD[getClockModIndex(withCvMod)]);
   }
   int getClockModIndex(bool withCvMod = false) const {
-    return withCvMod ? cvmod_clock_mod_index : base_clock_mod_index;
+    return (withCvMod && isCvDestActive(CV_DEST_MOD))
+      ? cvmod_clock_mod_index
+      : base_clock_mod_index;
   }
-  bool isCvModActive() const {
-    return cv1_dest != CV_DEST_NONE || cv2_dest != CV_DEST_NONE;
-  }
-
   byte getSteps(bool withCvMod = false) const {
-    return withCvMod ? pattern.GetSteps() : base_euc_steps;
+    return (withCvMod && isCvDestActive(CV_DEST_EUC_STEPS)) 
+      ? pattern.GetSteps()
+      : base_euc_steps;
   }
   byte getHits(bool withCvMod = false) const {
-    return withCvMod ? pattern.GetHits() : base_euc_hits;
+    return (withCvMod && isCvDestActive(CV_DEST_EUC_HITS)) 
+      ? pattern.GetHits()
+      : base_euc_hits;
   }
 
   void toggleMute() { mute = !mute; }
