@@ -153,6 +153,10 @@ public:
   void setChoke(uint8_t source) { choke_ = source; }
   uint8_t getChoke() const { return choke_; }
 
+  // --- Pattern view (for the UI) ---
+  uint8_t patternSteps() const { return live_[GATE_STEPS]; }
+  bool patternHit(uint8_t i) const { return (pattern_ & (1UL << i)) != 0; }
+
   /**
    * @brief Apply CV modulation. Called from the main loop when a CV is routed.
    * Rebuilds the live clock-mod index and each modulated parameter from base +

@@ -109,9 +109,10 @@ static const unsigned char pause_icon[28] PROGMEM = {
 
 // Constants for screen layout and fonts
 constexpr uint8_t SCREEN_CENTER_X = 32;
-constexpr uint8_t MAIN_TEXT_Y = 26;
-constexpr uint8_t SUB_TEXT_Y = 40;
+constexpr uint8_t MAIN_TEXT_Y = 34;
+constexpr uint8_t SUB_TEXT_Y = 44;
 constexpr uint8_t VISIBLE_MENU_ITEMS = 3;
+constexpr uint8_t MENU_ITEM_Y = 4;
 constexpr uint8_t MENU_ITEM_HEIGHT = 14;
 constexpr uint8_t MENU_BOX_PADDING = 4;
 constexpr uint8_t MENU_BOX_WIDTH = 64;
@@ -170,13 +171,14 @@ void drawRightAlignedText(const char *text, int y) {
 
 void drawMainSelection() {
   gravity.display.setDrawColor(1);
+  const int offsetY = 5;
   const int tickSize = 3;
   const int mainWidth = SCREEN_WIDTH / 2;
-  const int mainHeight = 49;
-  gravity.display.drawLine(0, 0, tickSize, 0);
-  gravity.display.drawLine(0, 0, 0, tickSize);
-  gravity.display.drawLine(mainWidth, 0, mainWidth - tickSize, 0);
-  gravity.display.drawLine(mainWidth, 0, mainWidth, tickSize);
+  const int mainHeight = 46;
+  gravity.display.drawLine(0, offsetY, tickSize, offsetY);
+  gravity.display.drawLine(0, offsetY, 0, tickSize + offsetY);
+  gravity.display.drawLine(mainWidth, offsetY, mainWidth - tickSize, offsetY);
+  gravity.display.drawLine(mainWidth, offsetY, mainWidth, tickSize + offsetY);
   gravity.display.drawLine(mainWidth, mainHeight, mainWidth,
                            mainHeight - tickSize);
   gravity.display.drawLine(mainWidth, mainHeight, mainWidth - tickSize,
@@ -198,7 +200,7 @@ void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
   }
 
   int boxX = MENU_BOX_WIDTH + 1;
-  int boxY = selectedBoxY + 2;
+  int boxY = MENU_ITEM_Y + selectedBoxY + 2;
   int boxWidth = MENU_BOX_WIDTH - 1;
   int boxHeight = MENU_ITEM_HEIGHT + 1;
 
@@ -220,7 +222,7 @@ void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
   for (uint8_t i = 0; i < min(menu_size, VISIBLE_MENU_ITEMS); ++i) {
     int idx = start_index + i;
     copyP(g_sub, sizeof(g_sub), menu_items[idx]);
-    drawRightAlignedText(g_sub, MENU_ITEM_HEIGHT * (i + 1) - 1);
+    drawRightAlignedText(g_sub, MENU_ITEM_Y + MENU_ITEM_HEIGHT * (i + 1) - 1);
   }
 }
 
@@ -417,11 +419,30 @@ const __FlashStringHelper *cvTargetLabel(CvTarget t) {
 }
 
 // Per-channel page: clock mod, the six gate params, then the two CV targets.
+// Draw the channel's euclidean pattern along the top: 3x3 px per step, filled
+// box for a hit, frame for a rest, centered on the step count.
+void drawChannelPattern(const Channel &ch) {
+  const uint8_t step_box_size = 4;
+  uint8_t steps = ch.patternSteps();
+  int x0 = (SCREEN_WIDTH - steps * step_box_size) / 2;
+  gravity.display.setDrawColor(1);
+  for (uint8_t i = 0; i < steps; i++) {
+    int x = x0 + i * step_box_size;
+    if (ch.patternHit(i))
+      gravity.display.drawBox(x, 0, step_box_size, step_box_size);
+    else
+      gravity.display.drawFrame(x, 0, step_box_size, step_box_size);
+  }
+  gravity.display.setDrawColor(2);
+}
+
 void DisplayChannelPage() {
   auto &ch = GetSelectedChannel();
 
   gravity.display.setFontMode(1);
   gravity.display.setDrawColor(2);
+
+  drawChannelPattern(ch);
 
   g_main[0] = '\0';
   g_sub[0] = '\0';
