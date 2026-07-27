@@ -11,7 +11,7 @@
 
 const char StateManager::SKETCH_NAME[] = "GRAVITY PLUS";
 // Bumped for per-channel choke + per-input CV calibration (one-time reset).
-const char StateManager::SEMANTIC_VERSION[] = "V1.3.0";
+const char StateManager::SEMANTIC_VERSION[] = "V1.0.1";
 
 const byte StateManager::MAX_SAVE_SLOTS = 10;
 const byte StateManager::TRANSIENT_SLOT = 10;
@@ -88,7 +88,7 @@ void StateManager::reset(AppState &app) {
   app.cv_run = default_app.cv_run;
   app.cv_reset = default_app.cv_reset;
 
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].Init();
   }
 
@@ -109,7 +109,7 @@ void StateManager::factoryReset(AppState &app) {
   }
   _saveMetadata(app);
   reset(app);
-  for (int i = 0; i < MAX_SAVE_SLOTS; i++) {
+  for (uint8_t i = 0; i < MAX_SAVE_SLOTS; i++) {
     app.selected_save_slot = i;
     _saveState(app, i);
   }
@@ -139,7 +139,7 @@ void StateManager::_saveState(const AppState &app, byte slot_index) {
   save_data.cv_run = app.cv_run;
   save_data.cv_reset = app.cv_reset;
 
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].save(save_data.channel_data[i]);
   }
 
@@ -163,7 +163,7 @@ void StateManager::_loadState(AppState &app, byte slot_index) {
   app.cv_run = load_data.cv_run;
   app.cv_reset = load_data.cv_reset;
 
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].load(load_data.channel_data[i]);
   }
 }

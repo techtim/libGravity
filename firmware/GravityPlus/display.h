@@ -217,7 +217,7 @@ void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
     start_index = app.selected_param - 1;
   }
 
-  for (int i = 0; i < min(menu_size, VISIBLE_MENU_ITEMS); ++i) {
+  for (uint8_t i = 0; i < min(menu_size, VISIBLE_MENU_ITEMS); ++i) {
     int idx = start_index + i;
     copyP(g_sub, sizeof(g_sub), menu_items[idx]);
     drawRightAlignedText(g_sub, MENU_ITEM_HEIGHT * (i + 1) - 1);
@@ -477,7 +477,7 @@ void DisplaySelectedChannel() {
   gravity.display.drawHLine(1, boxY, SCREEN_WIDTH - 2);
   gravity.display.drawVLine(SCREEN_WIDTH - 2, boxY, boxHeight);
 
-  for (int i = 0; i < Gravity::OUTPUT_COUNT + 1; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT + 1; i++) {
     gravity.display.setDrawColor(1);
     (app.selected_channel == i)
         ? gravity.display.drawBox(i * boxWidth, boxY, boxWidth, boxHeight)

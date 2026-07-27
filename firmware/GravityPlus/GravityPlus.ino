@@ -59,7 +59,7 @@ void setup() {
 
   // The six outputs are gate-driven. Use deferred writes so the clock ISR can
   // decide all channels first and then write the pins together (minimal skew).
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gravity.outputs[i].SetDeferred(true);
   }
 
@@ -82,7 +82,7 @@ void loop() {
   int cv1 = gravity.cv1.Read();
   int cv2 = gravity.cv2.Read();
 
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     auto &ch = app.channel[i];
     if (ch.isCvActive()) {
       ch.applyCvMod(cv1, cv2);
@@ -135,7 +135,7 @@ void loop() {
 void HandleIntClockTick(uint32_t tick) {
   bool refresh = false;
   // Phase 1: decide every channel's output (deferred - no pins written yet).
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].processClockTick(tick, gravity.outputs[i]);
     if (app.channel[i].isCvActive()) {
       refresh = true;
@@ -145,10 +145,10 @@ void HandleIntClockTick(uint32_t tick) {
   // Snapshot the decided gate states first so the trigger is the source's
   // natural fire - independent of channel order and of the source being choked.
   bool gate_on[Gravity::OUTPUT_COUNT];
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gate_on[i] = gravity.outputs[i].On();
   }
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     uint8_t src = app.channel[i].getChoke();
     if (src != 0 && src <= Gravity::OUTPUT_COUNT && gate_on[src - 1]) {
       gravity.outputs[i].Low();
@@ -156,7 +156,7 @@ void HandleIntClockTick(uint32_t tick) {
   }
 
   // Phase 2: write all six pins together so the channels update in lockstep.
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gravity.outputs[i].Flush();
   }
 
@@ -213,7 +213,7 @@ void HandleExtClockTick() {
 void HandlePlayPressed() {
   if (gravity.shift_button.On()) {
     if (app.selected_channel == 0) {
-      for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+      for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
         app.channel[i].toggleMute();
       }
     } else {
@@ -474,7 +474,7 @@ void InitGravity(AppState &app) {
 }
 
 void ResetOutputs() {
-  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gravity.outputs[i].Low();
     gravity.outputs[i].Flush(); // outputs are deferred; write the low now
   }
