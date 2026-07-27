@@ -151,7 +151,7 @@ void test_cv_param_targeting(void) {
                         ch.paramValue(GATE_PROB, true)); // others untouched
 }
 
-// Full save/load round-trip through the raw byte payload.
+// Full save/load round-trip through the raw byte payload (choke included).
 void test_save_load_roundtrip(void) {
   Channel ch;
   ch.setClockMod(5);
@@ -160,6 +160,7 @@ void test_save_load_roundtrip(void) {
   ch.editParam(GATE_DUTY, -20); // duty 30
   ch.setCv1Target(CV_OFFSET);
   ch.setMute(true);
+  ch.setChoke(3);
 
   byte payload[Channel::SAVE_BYTES] = {0};
   ch.save(payload);
@@ -172,6 +173,40 @@ void test_save_load_roundtrip(void) {
   TEST_ASSERT_EQUAL_INT(5, loaded.getClockModIndex(false));
   TEST_ASSERT_EQUAL(CV_OFFSET, loaded.getCv1Target());
   TEST_ASSERT_TRUE(loaded.isMuted());
+  TEST_ASSERT_EQUAL_UINT8(3, loaded.getChoke());
+}
+
+// Choke defaults off and stores a 1-based source channel.
+void test_choke_field(void) {
+  Channel ch;
+  TEST_ASSERT_EQUAL_UINT8(0, ch.getChoke());
+  ch.setChoke(4);
+  TEST_ASSERT_EQUAL_UINT8(4, ch.getChoke());
+}
+
+// The choke rule that HandleIntClockTick applies: a channel whose choke source's
+// gate is high is forced low. Replicated here over two DigitalOutputs.
+void test_choke_silences_when_source_on(void) {
+  DigitalOutput a, b;
+  a.Init(7);
+  b.Init(8);
+  a.High();       // source (channel 1) gate open
+  b.High();       // target decided to fire
+  Channel tgt;
+  tgt.setChoke(1); // choke by channel 1
+  // Apply the rule (mirror of HandleIntClockTick).
+  bool src_on = a.On();
+  if (tgt.getChoke() != 0 && src_on)
+    b.Low();
+  TEST_ASSERT_FALSE(b.On()); // choked off
+
+  // Source low -> target survives.
+  a.Low();
+  b.High();
+  src_on = a.On();
+  if (tgt.getChoke() != 0 && src_on)
+    b.Low();
+  TEST_ASSERT_TRUE(b.On());
 }
 
 int main(int argc, char **argv) {
@@ -184,5 +219,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_mute_forces_low);
   RUN_TEST(test_cv_param_targeting);
   RUN_TEST(test_save_load_roundtrip);
+  RUN_TEST(test_choke_field);
+  RUN_TEST(test_choke_silences_when_source_on);
   return UNITY_END();
 }

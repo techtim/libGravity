@@ -10,7 +10,8 @@
 #include "app_state.h"
 
 const char StateManager::SKETCH_NAME[] = "GRAVITY PLUS";
-const char StateManager::SEMANTIC_VERSION[] = "V1.0.0";
+// Bumped for per-channel choke + per-input CV calibration (one-time reset).
+const char StateManager::SEMANTIC_VERSION[] = "V1.3.0";
 
 const byte StateManager::MAX_SAVE_SLOTS = 10;
 const byte StateManager::TRANSIENT_SLOT = 10;
@@ -174,8 +175,12 @@ void StateManager::_saveMetadata(const AppState &app) {
   current_meta.selected_save_slot = app.selected_save_slot;
   current_meta.encoder_reversed = app.encoder_reversed;
   current_meta.rotate_display = app.rotate_display;
-  current_meta.cv1_unipolar = app.cv1_unipolar;
-  current_meta.cv2_unipolar = app.cv2_unipolar;
+  current_meta.cv1_cal_low = app.cv1_cal_low;
+  current_meta.cv1_cal_high = app.cv1_cal_high;
+  current_meta.cv1_cal_offset = app.cv1_cal_offset;
+  current_meta.cv2_cal_low = app.cv2_cal_low;
+  current_meta.cv2_cal_high = app.cv2_cal_high;
+  current_meta.cv2_cal_offset = app.cv2_cal_offset;
   EEPROM.put(METADATA_START_ADDR, current_meta);
 }
 
@@ -185,6 +190,10 @@ void StateManager::_loadMetadata(AppState &app) {
   app.selected_save_slot = metadata.selected_save_slot;
   app.encoder_reversed = metadata.encoder_reversed;
   app.rotate_display = metadata.rotate_display;
-  app.cv1_unipolar = metadata.cv1_unipolar;
-  app.cv2_unipolar = metadata.cv2_unipolar;
+  app.cv1_cal_low = metadata.cv1_cal_low;
+  app.cv1_cal_high = metadata.cv1_cal_high;
+  app.cv1_cal_offset = metadata.cv1_cal_offset;
+  app.cv2_cal_low = metadata.cv2_cal_low;
+  app.cv2_cal_high = metadata.cv2_cal_high;
+  app.cv2_cal_offset = metadata.cv2_cal_offset;
 }

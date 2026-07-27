@@ -38,8 +38,8 @@ public:
     byte selected_save_slot;
     bool encoder_reversed;
     bool rotate_display;
-    bool cv1_unipolar;
-    bool cv2_unipolar;
+    int cv1_cal_low, cv1_cal_high, cv1_cal_offset;
+    int cv2_cal_low, cv2_cal_high, cv2_cal_offset;
   };
   struct EepromData {
     int tempo;

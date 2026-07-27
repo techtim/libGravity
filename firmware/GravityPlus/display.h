@@ -124,8 +124,6 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_TEMPO,
   PARAM_MAIN_RUN,
   PARAM_MAIN_RESET,
-  PARAM_MAIN_CV1_RANGE,
-  PARAM_MAIN_CV2_RANGE,
   PARAM_MAIN_SOURCE,
   PARAM_MAIN_PULSE,
   PARAM_MAIN_ENCODER_DIR,
@@ -133,6 +131,13 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_SAVE_DATA,
   PARAM_MAIN_LOAD_DATA,
   PARAM_MAIN_RESET_STATE,
+  // CV calibration sits just above ERASE.
+  PARAM_MAIN_CV1_CAL_LO,
+  PARAM_MAIN_CV1_CAL_ZERO,
+  PARAM_MAIN_CV1_CAL_HI,
+  PARAM_MAIN_CV2_CAL_LO,
+  PARAM_MAIN_CV2_CAL_ZERO,
+  PARAM_MAIN_CV2_CAL_HI,
   PARAM_MAIN_FACTORY_RESET,
   PARAM_MAIN_LAST,
 };
@@ -222,6 +227,26 @@ void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
 // Visual indicator: mark the active save slot.
 inline void solidTick() { gravity.display.drawBox(56, 4, 4, 4); }
 
+// Center-zero horizontal bar meter for a bipolar CV reading (-512..+512). The
+// fill grows right of centre for positive readings, left for negative.
+void drawCvMeter(int value, int x, int y, int w, int h) {
+  const int half = w / 2;
+  const int cx = x + half;
+  gravity.display.setDrawColor(1);
+  gravity.display.drawFrame(x, y, w, h);
+  gravity.display.drawVLine(cx, y - 2, h + 4); // centre tick
+  if (value >= 0) {
+    int fill = constrain(map(value, 0, 512, 0, half), 0, half);
+    if (fill > 0)
+      gravity.display.drawBox(cx, y, fill, h);
+  } else {
+    int fill = constrain(map(-value, 0, 512, 0, half), 0, half);
+    if (fill > 0)
+      gravity.display.drawBox(cx - fill, y, fill, h);
+  }
+  gravity.display.setDrawColor(2);
+}
+
 // Human friendly display value for save slot, written into `out` (e.g. "A3").
 void displaySaveSlot(char *out, int slot) {
   const int half = StateManager::MAX_SAVE_SLOTS / 2;
@@ -242,6 +267,9 @@ void DisplayMainPage() {
 
   g_main[0] = '\0';
   g_sub[0] = '\0';
+  // The CV range params draw a live signal meter in place of the big value.
+  bool show_cv_meter = false;
+  int cv_meter_value = 0;
 
   switch (app.selected_param) {
   case PARAM_MAIN_TEMPO:
@@ -270,18 +298,23 @@ void DisplayMainPage() {
     case CV_RESET_EXT: copyP(g_sub, sizeof(g_sub), F("EXT TRIG")); break;
     }
     break;
-  case PARAM_MAIN_CV1_RANGE: {
-    copyP(g_main, sizeof(g_main), F("CV1"));
-    bool uni = app.editing_param ? (app.selected_sub_param == 1)
-                                 : app.cv1_unipolar;
-    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
-    break;
-  }
-  case PARAM_MAIN_CV2_RANGE: {
-    copyP(g_main, sizeof(g_main), F("CV2"));
-    bool uni = app.editing_param ? (app.selected_sub_param == 1)
-                                 : app.cv2_unipolar;
-    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
+  case PARAM_MAIN_CV1_CAL_LO:
+  case PARAM_MAIN_CV1_CAL_ZERO:
+  case PARAM_MAIN_CV1_CAL_HI:
+  case PARAM_MAIN_CV2_CAL_LO:
+  case PARAM_MAIN_CV2_CAL_ZERO:
+  case PARAM_MAIN_CV2_CAL_HI: {
+    bool is1 = app.selected_param <= PARAM_MAIN_CV1_CAL_HI;
+    cv_meter_value = is1 ? gravity.cv1.Read() : gravity.cv2.Read();
+    show_cv_meter = true; // tune against the live reading
+    switch (app.selected_param) {
+    case PARAM_MAIN_CV1_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL -5V")); break;
+    case PARAM_MAIN_CV1_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL 0V")); break;
+    case PARAM_MAIN_CV1_CAL_HI: copyP(g_sub, sizeof(g_sub), F("CV1 CAL +5V")); break;
+    case PARAM_MAIN_CV2_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL -5V")); break;
+    case PARAM_MAIN_CV2_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL 0V")); break;
+    default: copyP(g_sub, sizeof(g_sub), F("CV2 CAL +5V")); break;
+    }
     break;
   }
   case PARAM_MAIN_SOURCE:
@@ -356,14 +389,20 @@ void DisplayMainPage() {
     break;
   }
 
-  drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
+  if (show_cv_meter) {
+    drawCvMeter(cv_meter_value, 2, 18, 60, 12);
+  } else {
+    drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
+  }
   drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
   const __FlashStringHelper *menu_items[PARAM_MAIN_LAST] = {
-      F("TEMPO"),     F("RUN"),         F("RESTART"),
-      F("CV1 RANGE"), F("CV2 RANGE"),   F("SOURCE"),
-      F("PULSE OUT"), F("ENCODER DIR"), F("ROTATE DISP"),
-      F("SAVE"),      F("LOAD"),        F("RESET"),
+      F("TEMPO"),       F("RUN"),         F("RESTART"),
+      F("SOURCE"),      F("PULSE OUT"),   F("ENCODER DIR"),
+      F("ROTATE DISP"), F("SAVE"),        F("LOAD"),
+      F("RESET"),
+      F("CV1 CAL -5V"), F("CV1 CAL 0V"),  F("CV1 CAL +5V"),
+      F("CV2 CAL -5V"), F("CV2 CAL 0V"),  F("CV2 CAL +5V"),
       F("ERASE")};
   drawMenuItems(menu_items, PARAM_MAIN_LAST);
 }
@@ -406,6 +445,13 @@ void DisplayChannelPage() {
     uint8_t i = pageParamToGate(param);
     itoa(ch.paramValue(i, withCvMod), g_main, 10);
     copyP(g_sub, sizeof(g_sub), Channel::paramLabel(i));
+  } else if (param == CP_CHOKE) {
+    uint8_t src = ch.getChoke();
+    if (src == 0)
+      copyP(g_main, sizeof(g_main), F("OFF"));
+    else
+      itoa(src, g_main, 10);
+    copyP(g_sub, sizeof(g_sub), F("CHOKE BY"));
   } else {
     bool is_cv1 = (param == CP_CV1);
     copyP(g_main, sizeof(g_main), is_cv1 ? F("CV1") : F("CV2"));
@@ -417,8 +463,8 @@ void DisplayChannelPage() {
   drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
   const __FlashStringHelper *menu_items[CHANNEL_PAGE_PARAM_COUNT] = {
-      F("MOD"),  F("STEPS"),   F("HITS"),   F("PROB"),  F("DUTY"),
-      F("OFFSET"), F("SWING"), F("CV1 MOD"), F("CV2 MOD")};
+      F("MOD"),    F("STEPS"), F("HITS"),    F("PROB"),    F("DUTY"),
+      F("OFFSET"), F("SWING"), F("CHOKE"),   F("CV1 MOD"), F("CV2 MOD")};
   drawMenuItems(menu_items, CHANNEL_PAGE_PARAM_COUNT);
 }
 

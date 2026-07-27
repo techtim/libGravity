@@ -40,6 +40,7 @@ void updateSelection(byte &param, int change, int maxValue);
 void editMainParameter(int val);
 void editChannelParameter(int val);
 void InitGravity(AppState &app);
+void ApplyCvCal();
 void ResetOutputs();
 
 //
@@ -74,17 +75,12 @@ void setup() {
   gravity.play_button.AttachPressHandler(HandlePlayPressed);
 }
 
-// Normalize a CV reading (bipolar -512..+512, 0V at 0) to a modulation value per
-// the input's configured range. UNIPOLAR remaps the positive half to the full span.
-int cvModValue(int read, bool unipolar) {
-  return !unipolar ? read : 2 * constrain(read, 0, 512) - 512;
-}
-
 void loop() {
   gravity.Process();
 
-  int cv1 = cvModValue(gravity.cv1.Read(), app.cv1_unipolar);
-  int cv2 = cvModValue(gravity.cv2.Read(), app.cv2_unipolar);
+  // Bipolar CV readings (-512..+512) feed channel modulation directly.
+  int cv1 = gravity.cv1.Read();
+  int cv2 = gravity.cv2.Read();
 
   for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     auto &ch = app.channel[i];
@@ -120,6 +116,13 @@ void loop() {
 
   stateManager.update(app);
 
+  // Keep the CV signal meter live while a calibration screen is up.
+  if (app.selected_channel == 0 &&
+      app.selected_param >= PARAM_MAIN_CV1_CAL_LO &&
+      app.selected_param <= PARAM_MAIN_CV2_CAL_HI) {
+    app.refresh_screen = true;
+  }
+
   if (app.refresh_screen) {
     UpdateDisplay();
   }
@@ -138,6 +141,20 @@ void HandleIntClockTick(uint32_t tick) {
       refresh = true;
     }
   }
+  // Choke: silence any channel whose choke source's gate is high this tick.
+  // Snapshot the decided gate states first so the trigger is the source's
+  // natural fire - independent of channel order and of the source being choked.
+  bool gate_on[Gravity::OUTPUT_COUNT];
+  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+    gate_on[i] = gravity.outputs[i].On();
+  }
+  for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+    uint8_t src = app.channel[i].getChoke();
+    if (src != 0 && src <= Gravity::OUTPUT_COUNT && gate_on[src - 1]) {
+      gravity.outputs[i].Low();
+    }
+  }
+
   // Phase 2: write all six pins together so the channels update in lockstep.
   for (int i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gravity.outputs[i].Flush();
@@ -178,7 +195,12 @@ void HandleExtClockTick() {
     }
     break;
   default:
-    // EXT is the clock source: register the external tick.
+    // EXT is the clock source. uClock's external clock ignores ticks while the
+    // transport is paused, so arm it on the first incoming edge - otherwise the
+    // external clock never runs after a stop.
+    if (gravity.clock.IsPaused()) {
+      gravity.clock.Start();
+    }
     gravity.clock.Tick();
     app.refresh_screen = true;
   }
@@ -217,12 +239,6 @@ void ExitEditing() {
     case PARAM_MAIN_ROTATE_DISP:
       app.rotate_display = app.selected_sub_param == 1;
       gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
-      break;
-    case PARAM_MAIN_CV1_RANGE:
-      app.cv1_unipolar = app.selected_sub_param == 1;
-      break;
-    case PARAM_MAIN_CV2_RANGE:
-      app.cv2_unipolar = app.selected_sub_param == 1;
       break;
     case PARAM_MAIN_SAVE_DATA:
       if (app.selected_sub_param < StateManager::MAX_SAVE_SLOTS) {
@@ -273,10 +289,6 @@ void EnterEditing() {
       app.selected_sub_param = app.encoder_reversed ? 1 : 0; break;
     case PARAM_MAIN_ROTATE_DISP:
       app.selected_sub_param = app.rotate_display ? 1 : 0; break;
-    case PARAM_MAIN_CV1_RANGE:
-      app.selected_sub_param = app.cv1_unipolar ? 1 : 0; break;
-    case PARAM_MAIN_CV2_RANGE:
-      app.selected_sub_param = app.cv2_unipolar ? 1 : 0; break;
     default:
       break;
     }
@@ -373,11 +385,17 @@ void editMainParameter(int val) {
     }
     break;
   }
+  // CV calibration: adjust the raw endpoint / zero directly (live), *8 for a
+  // usable tuning step. Watch the on-screen meter and tune to 0 / +-full.
+  case PARAM_MAIN_CV1_CAL_LO: app.cv1_cal_low += val * 8; ApplyCvCal(); break;
+  case PARAM_MAIN_CV1_CAL_ZERO: app.cv1_cal_offset += val * 8; ApplyCvCal(); break;
+  case PARAM_MAIN_CV1_CAL_HI: app.cv1_cal_high += val * 8; ApplyCvCal(); break;
+  case PARAM_MAIN_CV2_CAL_LO: app.cv2_cal_low += val * 8; ApplyCvCal(); break;
+  case PARAM_MAIN_CV2_CAL_ZERO: app.cv2_cal_offset += val * 8; ApplyCvCal(); break;
+  case PARAM_MAIN_CV2_CAL_HI: app.cv2_cal_high += val * 8; ApplyCvCal(); break;
   // Applied on encoder button press.
   case PARAM_MAIN_ENCODER_DIR:
   case PARAM_MAIN_ROTATE_DISP:
-  case PARAM_MAIN_CV1_RANGE:
-  case PARAM_MAIN_CV2_RANGE:
   case PARAM_MAIN_RESET_STATE:
   case PARAM_MAIN_FACTORY_RESET:
     updateSelection(app.selected_sub_param, val, 2);
@@ -400,6 +418,18 @@ void editChannelParameter(int val) {
     ch.setClockMod(ch.getClockModIndex() + val);
   } else if (pageParamIsGate(param)) {
     ch.editParam(pageParamToGate(param), val);
+  } else if (param == CP_CHOKE) {
+    // Choke source: 0 = off, else a 1-based channel number. A channel may not
+    // choke itself, so hop over its own number (app.selected_channel).
+    byte prev = ch.getChoke();
+    byte src = prev;
+    updateSelection(src, val, Gravity::OUTPUT_COUNT + 1); // 0..OUTPUT_COUNT
+    if (src == app.selected_channel) {
+      byte hopped = src;
+      updateSelection(hopped, val, Gravity::OUTPUT_COUNT + 1);
+      src = (hopped == app.selected_channel) ? prev : hopped; // edge: stay put
+    }
+    ch.setChoke(src);
   } else {
     // CP_CV1 / CP_CV2 routing target. Valid targets are CV_NONE..CV_SWING.
     bool is_cv1 = (param == CP_CV1);
@@ -425,11 +455,22 @@ void updateSelection(byte &param, int change, int maxValue) {
 // App helper functions.
 //
 
+// Push the stored per-input CV calibration into the AnalogInput objects.
+void ApplyCvCal() {
+  gravity.cv1.SetCalibrationLow(app.cv1_cal_low);
+  gravity.cv1.SetCalibrationHigh(app.cv1_cal_high);
+  gravity.cv1.AdjustOffset(app.cv1_cal_offset - gravity.cv1.GetOffset());
+  gravity.cv2.SetCalibrationLow(app.cv2_cal_low);
+  gravity.cv2.SetCalibrationHigh(app.cv2_cal_high);
+  gravity.cv2.AdjustOffset(app.cv2_cal_offset - gravity.cv2.GetOffset());
+}
+
 void InitGravity(AppState &app) {
   gravity.clock.SetTempo(app.tempo);
   gravity.clock.SetSource(app.selected_source);
   gravity.encoder.SetReverseDirection(app.encoder_reversed);
   gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
+  ApplyCvCal();
 }
 
 void ResetOutputs() {

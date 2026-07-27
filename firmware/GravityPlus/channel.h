@@ -67,6 +67,7 @@ public:
     cv1_ = CV_NONE;
     cv2_ = CV_NONE;
     mute_ = false;
+    choke_ = 0;
     step_ = 0;
     phase_ = 0;
     beat_ = 0;
@@ -145,6 +146,12 @@ public:
   void toggleMute() { mute_ = !mute_; }
   void setMute(bool m) { mute_ = m; }
   bool isMuted() const { return mute_; }
+
+  // --- Choke ---
+  // 0 = off, otherwise the 1-based channel number whose gate silences this one
+  // (applied in the clock ISR, see HandleIntClockTick).
+  void setChoke(uint8_t source) { choke_ = source; }
+  uint8_t getChoke() const { return choke_; }
 
   /**
    * @brief Apply CV modulation. Called from the main loop when a CV is routed.
@@ -231,23 +238,25 @@ public:
     p[1] = (byte)cv1_;
     p[2] = (byte)cv2_;
     p[3] = mute_ ? 0x01 : 0x00;
+    p[4] = choke_;
     for (uint8_t i = 0; i < GATE_PARAM_COUNT; i++)
-      p[4 + i] = base_[i];
+      p[5 + i] = base_[i];
   }
   void load(const byte *p) {
     base_clock_mod_ = constrain((int)p[0], 0, MOD_CHOICE_SIZE - 1);
     cv1_ = (CvTarget)constrain((int)p[1], 0, CV_TARGET_COUNT - 1);
     cv2_ = (CvTarget)constrain((int)p[2], 0, CV_TARGET_COUNT - 1);
     mute_ = (p[3] & 0x01) != 0;
+    choke_ = p[4];
     // Clamp in STEPS -> HITS order so HITS can bound to the loaded step count.
     for (uint8_t i = 0; i < GATE_PARAM_COUNT; i++)
-      base_[i] = clampParam(i, (int)p[4 + i], base_[GATE_STEPS]);
+      base_[i] = clampParam(i, (int)p[5 + i], base_[GATE_STEPS]);
     syncLive();
     live_clock_mod_ = base_clock_mod_;
     refreshModPulses();
     finalize();
   }
-  static const uint8_t SAVE_BYTES = 4 + GATE_PARAM_COUNT;
+  static const uint8_t SAVE_BYTES = 5 + GATE_PARAM_COUNT;
 
 private:
   // Clamp a raw value to param i's range. HITS is bounded by `steps`.
@@ -349,6 +358,7 @@ private:
   uint8_t step_;     // current step index
 
   bool mute_;
+  uint8_t choke_; // 0 = off, else 1-based source channel that silences this one
 };
 
 #endif // GRAVITYPLUS_CHANNEL_H

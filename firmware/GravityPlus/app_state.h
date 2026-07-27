@@ -34,9 +34,14 @@ struct AppState {
   bool encoder_reversed = false;
   bool rotate_display = false;
   bool refresh_screen = true;
-  // CV input range: false = bipolar (-5..+5V), true = unipolar (0..+5V).
-  bool cv1_unipolar = false;
-  bool cv2_unipolar = false;
+  // Per-input ADC calibration (raw endpoints + zero offset). Applied to
+  // gravity.cvN in InitGravity so an electrical 0V reads 0.
+  int cv1_cal_low = CALIBRATED_LOW;
+  int cv1_cal_high = CALIBRATED_HIGH;
+  int cv1_cal_offset = 0;
+  int cv2_cal_low = CALIBRATED_LOW;
+  int cv2_cal_high = CALIBRATED_HIGH;
+  int cv2_cal_offset = 0;
 };
 
 extern AppState app;
@@ -46,8 +51,8 @@ inline Channel &GetSelectedChannel() {
 }
 
 // The channel page shows a fixed list of parameters: clock mod, the six gate
-// parameters (STEPS..SWING, in GateParam order), then the two CV routing
-// targets. The gate params occupy [CP_STEPS, CP_STEPS + GATE_PARAM_COUNT).
+// parameters (STEPS..SWING, in GateParam order), the choke source, then the two
+// CV routing targets. The gate params occupy [CP_STEPS, CP_STEPS + GATE_PARAM_COUNT).
 enum ChannelPageParam : uint8_t {
   CP_CLOCK_MOD,
   CP_STEPS,
@@ -56,11 +61,12 @@ enum ChannelPageParam : uint8_t {
   CP_DUTY,
   CP_OFFSET,
   CP_SWING,
+  CP_CHOKE,
   CP_CV1,
   CP_CV2,
   CHANNEL_PAGE_PARAM_COUNT,
 };
-static_assert(CP_STEPS == 1 && CP_CV1 == CP_STEPS + GATE_PARAM_COUNT,
+static_assert(CP_STEPS == 1 && CP_CHOKE == CP_STEPS + GATE_PARAM_COUNT,
               "channel-page gate params must be contiguous after CP_CLOCK_MOD");
 
 // Map a channel-page param index to its GateParam (only valid for CP_STEPS..CP_SWING).
