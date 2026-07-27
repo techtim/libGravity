@@ -195,12 +195,6 @@ void HandleExtClockTick() {
     }
     break;
   default:
-    // EXT is the clock source. uClock's external clock ignores ticks while the
-    // transport is paused, so arm it on the first incoming edge - otherwise the
-    // external clock never runs after a stop.
-    if (gravity.clock.IsPaused()) {
-      gravity.clock.Start();
-    }
     gravity.clock.Tick();
     app.refresh_screen = true;
   }
@@ -328,7 +322,7 @@ void HandleRotate(int val) {
   }
   if (!app.editing_param) {
     const int max_param =
-        (app.selected_channel == 0) ? PARAM_MAIN_LAST : CHANNEL_PAGE_PARAM_COUNT;
+        (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CHANNEL_PAGE_PARAM_COUNT;
     updateSelection(app.selected_param, val, max_param);
   } else {
     if (app.selected_channel == 0) {
@@ -344,7 +338,7 @@ void HandlePressedRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
   // Keep the selected param across channels; clamp to the destination page.
   int max_param =
-      (app.selected_channel == 0) ? PARAM_MAIN_LAST : CHANNEL_PAGE_PARAM_COUNT;
+      (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CHANNEL_PAGE_PARAM_COUNT;
   if (app.selected_param >= max_param) {
     app.selected_param = max_param - 1;
   }
@@ -370,14 +364,14 @@ void editMainParameter(int val) {
     app.cv_reset = app.selected_sub_param;
     break;
   case PARAM_MAIN_SOURCE: {
-    byte source = static_cast<int>(app.selected_source);
+    byte source = static_cast<byte>(app.selected_source);
     updateSelection(source, val, Clock::SOURCE_LAST);
     app.selected_source = static_cast<Clock::Source>(source);
     gravity.clock.SetSource(app.selected_source);
     break;
   }
   case PARAM_MAIN_PULSE: {
-    byte pulse = static_cast<int>(app.selected_pulse);
+    byte pulse = static_cast<byte>(app.selected_pulse);
     updateSelection(pulse, val, Clock::PULSE_LAST);
     app.selected_pulse = static_cast<Clock::Pulse>(pulse);
     if (app.selected_pulse == Clock::PULSE_NONE) {
@@ -417,7 +411,7 @@ void editChannelParameter(int val) {
   if (param == CP_CLOCK_MOD) {
     ch.setClockMod(ch.getClockModIndex() + val);
   } else if (pageParamIsGate(param)) {
-    ch.editParam(pageParamToGate(param), val);
+    ch.editParam(param, val);
   } else if (param == CP_CHOKE) {
     // Choke source: 0 = off, else a 1-based channel number. A channel may not
     // choke itself, so hop over its own number (app.selected_channel).

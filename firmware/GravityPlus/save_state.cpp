@@ -11,7 +11,7 @@
 
 const char StateManager::SKETCH_NAME[] = "GRAVITY PLUS";
 // Bumped for per-channel choke + per-input CV calibration (one-time reset).
-const char StateManager::SEMANTIC_VERSION[] = "V1.0.1";
+const char StateManager::SEMANTIC_VERSION[] = "V1.0.3";
 
 const byte StateManager::MAX_SAVE_SLOTS = 10;
 const byte StateManager::TRANSIENT_SLOT = 10;
@@ -28,6 +28,10 @@ static_assert(sizeof(StateManager::EepromData) * 11 +
                   1024,
               "GravityPlus save data exceeds the ATmega328P 1KB EEPROM");
 
+// Single shared EEPROM scratch buffer (~80 B). Save and load never overlap, so
+// one static instead of one per function keeps RAM headroom for the stack.
+static StateManager::EepromData eeprom_io;
+
 StateManager::StateManager() : _lastChangeTime(0), _isDirty(false) {}
 
 bool StateManager::initialize(AppState &app) {
@@ -38,6 +42,7 @@ bool StateManager::initialize(AppState &app) {
     _loadState(app, TRANSIENT_SLOT);
     success = true;
   } else {
+    reset(app);
     factoryReset(app);
   }
   interrupts();
@@ -79,20 +84,10 @@ void StateManager::update(const AppState &app) {
 
 void StateManager::reset(AppState &app) {
   noInterrupts();
-  AppState default_app;
-  app.tempo = default_app.tempo;
-  app.selected_param = default_app.selected_param;
-  app.selected_channel = default_app.selected_channel;
-  app.selected_source = default_app.selected_source;
-  app.selected_pulse = default_app.selected_pulse;
-  app.cv_run = default_app.cv_run;
-  app.cv_reset = default_app.cv_reset;
+  
+  ResetAppState(app);
 
-  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
-    app.channel[i].Init();
-  }
-
-  _loadMetadata(app);
+  _loadMetadata(app); // encoder / rotate / CV calibration
   _isDirty = false;
   interrupts();
 }
@@ -117,19 +112,32 @@ void StateManager::factoryReset(AppState &app) {
   interrupts();
 }
 
+// Bump on ANY change to the persisted layout that keeps the struct sizes the
+// same - e.g. reordering the gate params. Size changes are caught automatically
+// below; order-only changes are not, so they need this.
+static const uint16_t LAYOUT_REVISION = 2;
+
+// Layout signature: struct sizes + the manual revision. A mismatch forces a
+// one-time factory reset even when the version string is reused.
+static uint16_t layoutSignature() {
+  return (uint16_t)(sizeof(StateManager::EepromData) +
+                    sizeof(StateManager::Metadata) + LAYOUT_REVISION * 7919u);
+}
+
 bool StateManager::_isDataValid() {
   Metadata metadata;
   EEPROM.get(METADATA_START_ADDR, metadata);
   bool name_match = (strcmp(metadata.sketch_name, SKETCH_NAME) == 0);
   bool version_match = (strcmp(metadata.version, SEMANTIC_VERSION) == 0);
-  return name_match && version_match;
+  bool layout_match = (metadata.layout == layoutSignature());
+  return name_match && version_match && layout_match;
 }
 
 void StateManager::_saveState(const AppState &app, byte slot_index) {
   if (app.selected_save_slot >= MAX_SAVE_SLOTS + 1)
     return;
 
-  static EepromData save_data;
+  EepromData &save_data = eeprom_io;
 
   save_data.tempo = app.tempo;
   save_data.selected_param = app.selected_param;
@@ -151,7 +159,7 @@ void StateManager::_loadState(AppState &app, byte slot_index) {
   if (slot_index >= MAX_SAVE_SLOTS + 1)
     return;
 
-  static EepromData load_data;
+  EepromData &load_data = eeprom_io;
   int address = EEPROM_DATA_START_ADDR + (slot_index * sizeof(EepromData));
   EEPROM.get(address, load_data);
 
@@ -162,6 +170,9 @@ void StateManager::_loadState(AppState &app, byte slot_index) {
   app.selected_pulse = static_cast<Clock::Pulse>(load_data.selected_pulse);
   app.cv_run = load_data.cv_run;
   app.cv_reset = load_data.cv_reset;
+  // Defensive: never boot onto a non-existent channel page.
+  if (app.selected_channel > Gravity::OUTPUT_COUNT)
+    app.selected_channel = 0;
 
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].load(load_data.channel_data[i]);
@@ -172,6 +183,7 @@ void StateManager::_saveMetadata(const AppState &app) {
   Metadata current_meta;
   strcpy(current_meta.sketch_name, SKETCH_NAME);
   strcpy(current_meta.version, SEMANTIC_VERSION);
+  current_meta.layout = layoutSignature();
   current_meta.selected_save_slot = app.selected_save_slot;
   current_meta.encoder_reversed = app.encoder_reversed;
   current_meta.rotate_display = app.rotate_display;

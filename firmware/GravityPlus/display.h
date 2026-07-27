@@ -331,6 +331,7 @@ void DisplayMainPage() {
     case Clock::SOURCE_EXTERNAL_PPQN_2: copyP(g_sub, sizeof(g_sub), F("2 PPQN")); break;
     case Clock::SOURCE_EXTERNAL_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN")); break;
     case Clock::SOURCE_EXTERNAL_MIDI: copyP(g_sub, sizeof(g_sub), F("MIDI")); break;
+    default: break;
     }
     break;
   case PARAM_MAIN_PULSE:
@@ -340,6 +341,7 @@ void DisplayMainPage() {
     case Clock::PULSE_PPQN_24: copyP(g_sub, sizeof(g_sub), F("24 PPQN PULSE")); break;
     case Clock::PULSE_PPQN_4: copyP(g_sub, sizeof(g_sub), F("4 PPQN PULSE")); break;
     case Clock::PULSE_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN PULSE")); break;
+    default: break;
     }
     break;
   case PARAM_MAIN_ENCODER_DIR: {
@@ -413,8 +415,7 @@ void DisplayMainPage() {
 const __FlashStringHelper *cvTargetLabel(CvTarget t) {
   switch (t) {
   case CV_NONE: return F("NONE");
-  case CV_CLOCK_MOD: return F("CLOCK MOD");
-  default: return Channel::paramLabel(t - CV_STEPS);
+  default: return Channel::paramLabel(t - 1);
   }
 }
 
@@ -426,7 +427,7 @@ void drawChannelPattern(const Channel &ch) {
   uint8_t steps = ch.patternSteps();
   int x0 = (SCREEN_WIDTH - steps * step_box_size) / 2;
   gravity.display.setDrawColor(1);
-  for (uint8_t i = 0; i < steps; i++) {
+  for (uint8_t i = 0; i < steps; ++i) {
     int x = x0 + i * step_box_size;
     if (ch.patternHit(i))
       gravity.display.drawBox(x, 0, step_box_size, step_box_size);
@@ -463,9 +464,8 @@ void DisplayChannelPage() {
       copyP(g_sub, sizeof(g_sub), F("MULTIPLY"));
     }
   } else if (pageParamIsGate(param)) {
-    uint8_t i = pageParamToGate(param);
-    itoa(ch.paramValue(i, withCvMod), g_main, 10);
-    copyP(g_sub, sizeof(g_sub), Channel::paramLabel(i));
+    itoa(ch.paramValue(param, withCvMod), g_main, 10);
+    copyP(g_sub, sizeof(g_sub), Channel::paramLabel(param));
   } else if (param == CP_CHOKE) {
     uint8_t src = ch.getChoke();
     if (src == 0)
@@ -483,10 +483,11 @@ void DisplayChannelPage() {
   drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
   drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
-  const __FlashStringHelper *menu_items[CHANNEL_PAGE_PARAM_COUNT] = {
-      F("MOD"),    F("STEPS"), F("HITS"),    F("PROB"),    F("DUTY"),
-      F("OFFSET"), F("SWING"), F("CHOKE"),   F("CV1 MOD"), F("CV2 MOD")};
-  drawMenuItems(menu_items, CHANNEL_PAGE_PARAM_COUNT);
+  // Labels come from Channel::paramLabel (single source), indexed by ChannelPageParam.
+  const __FlashStringHelper *menu_items_channel[CHANNEL_PAGE_PARAM_COUNT];
+  for (uint8_t i = 0; i < CHANNEL_PAGE_PARAM_COUNT; ++i)
+    menu_items_channel[i] = Channel::paramLabel(i);
+  drawMenuItems(menu_items_channel, CHANNEL_PAGE_PARAM_COUNT);
 }
 
 void DisplaySelectedChannel() {
@@ -498,7 +499,7 @@ void DisplaySelectedChannel() {
   gravity.display.drawHLine(1, boxY, SCREEN_WIDTH - 2);
   gravity.display.drawVLine(SCREEN_WIDTH - 2, boxY, boxHeight);
 
-  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT + 1; i++) {
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT + 1; ++i) {
     gravity.display.setDrawColor(1);
     (app.selected_channel == i)
         ? gravity.display.drawBox(i * boxWidth, boxY, boxWidth, boxHeight)

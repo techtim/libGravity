@@ -28,24 +28,24 @@ void tearDown() {}
 // Six named params, with the documented defaults.
 void test_defaults(void) {
   Channel ch;
-  TEST_ASSERT_EQUAL_UINT8(GATE_PARAM_COUNT, ch.paramCount());
-  TEST_ASSERT_EQUAL_UINT8(6, ch.paramCount());
-  TEST_ASSERT_EQUAL_INT(1, ch.paramValue(GATE_STEPS, false));
-  TEST_ASSERT_EQUAL_INT(1, ch.paramValue(GATE_HITS, false));
-  TEST_ASSERT_EQUAL_INT(100, ch.paramValue(GATE_PROB, false));
-  TEST_ASSERT_EQUAL_INT(50, ch.paramValue(GATE_DUTY, false));
-  TEST_ASSERT_EQUAL_INT(0, ch.paramValue(GATE_OFFSET, false));
-  TEST_ASSERT_EQUAL_INT(50, ch.paramValue(GATE_SWING, false));
+  TEST_ASSERT_EQUAL_UINT8(GATE_COUNT, ch.paramCount());
+  TEST_ASSERT_EQUAL_UINT8(7, ch.paramCount());
+  TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_STEPS, false));
+  TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_HITS, false));
+  TEST_ASSERT_EQUAL_INT(100, ch.paramValue(CP_PROB, false));
+  TEST_ASSERT_EQUAL_INT(50, ch.paramValue(CP_DUTY, false));
+  TEST_ASSERT_EQUAL_INT(0, ch.paramValue(CP_OFFSET, false));
+  TEST_ASSERT_EQUAL_INT(50, ch.paramValue(CP_SWING, false));
 }
 
 // HITS clamps to STEPS both when editing HITS up and when shrinking STEPS.
 void test_hits_clamped_to_steps(void) {
   Channel ch;
-  ch.editParam(GATE_STEPS, 7); // steps -> 8
-  ch.editParam(GATE_HITS, 20); // hits requested 21 -> clamp to 8
-  TEST_ASSERT_EQUAL_INT(8, ch.paramValue(GATE_HITS, false));
-  ch.editParam(GATE_STEPS, -5); // steps -> 3, hits should follow down
-  TEST_ASSERT_EQUAL_INT(3, ch.paramValue(GATE_HITS, false));
+  ch.editParam(CP_STEPS, 7); // steps -> 8
+  ch.editParam(CP_HITS, 20); // hits requested 21 -> clamp to 8
+  TEST_ASSERT_EQUAL_INT(8, ch.paramValue(CP_HITS, false));
+  ch.editParam(CP_STEPS, -5); // steps -> 3, hits should follow down
+  TEST_ASSERT_EQUAL_INT(3, ch.paramValue(CP_HITS, false));
 }
 
 // Euclidean E(4,2) at the smallest clock division (mod_pulses = 4) rises on
@@ -53,8 +53,8 @@ void test_hits_clamped_to_steps(void) {
 void test_euclidean_gate_pattern(void) {
   Channel ch;
   ch.setClockMod(MOD_CHOICE_SIZE - 1);
-  ch.editParam(GATE_STEPS, 3); // steps -> 4
-  ch.editParam(GATE_HITS, 1);  // hits -> 2
+  ch.editParam(CP_STEPS, 3); // steps -> 4
+  ch.editParam(CP_HITS, 1);  // hits -> 2
 
   DigitalOutput out;
   out.Init(7);
@@ -96,7 +96,7 @@ void test_probability_gate_edges(void) {
 
   // Offset shifts the rising edge to phase 24 (offset 25% of 96).
   Channel off;
-  off.editParam(GATE_OFFSET, 25);
+  off.editParam(CP_OFFSET, 25);
   DigitalOutput o2;
   o2.Init(7);
   int rise2 = -1;
@@ -114,8 +114,8 @@ void test_probability_gate_edges(void) {
 void test_restart_to_step0(void) {
   Channel ch;
   ch.setClockMod(MOD_CHOICE_SIZE - 1);
-  ch.editParam(GATE_STEPS, 3); // E(4,2)
-  ch.editParam(GATE_HITS, 1);
+  ch.editParam(CP_STEPS, 3); // E(4,2)
+  ch.editParam(CP_HITS, 1);
   DigitalOutput out;
   out.Init(7);
   ch.processClockTick(0, out);
@@ -140,24 +140,24 @@ void test_mute_forces_low(void) {
 // modulated value for the routed param and base for the others.
 void test_cv_param_targeting(void) {
   Channel ch;
-  ch.editParam(GATE_STEPS, 3); // base steps = 4
-  TEST_ASSERT_EQUAL_INT(4, ch.paramValue(GATE_STEPS, true)); // not routed -> base
+  ch.editParam(CP_STEPS, 3); // base steps = 4
+  TEST_ASSERT_EQUAL_INT(4, ch.paramValue(CP_STEPS, true)); // not routed -> base
 
   ch.setCv1Target(CV_STEPS);
   ch.applyCvMod(512, 0); // steps 4 + map(512,-512,512,0,32)=32 -> clamp 32
-  TEST_ASSERT_EQUAL_INT(32, ch.paramValue(GATE_STEPS, true)); // routed -> live
-  TEST_ASSERT_EQUAL_INT(4, ch.paramValue(GATE_STEPS, false)); // base unchanged
-  TEST_ASSERT_EQUAL_INT(ch.paramValue(GATE_PROB, false),
-                        ch.paramValue(GATE_PROB, true)); // others untouched
+  TEST_ASSERT_EQUAL_INT(32, ch.paramValue(CP_STEPS, true)); // routed -> live
+  TEST_ASSERT_EQUAL_INT(4, ch.paramValue(CP_STEPS, false)); // base unchanged
+  TEST_ASSERT_EQUAL_INT(ch.paramValue(CP_PROB, false),
+                        ch.paramValue(CP_PROB, true)); // others untouched
 }
 
 // Full save/load round-trip through the raw byte payload (choke included).
 void test_save_load_roundtrip(void) {
   Channel ch;
   ch.setClockMod(5);
-  ch.editParam(GATE_STEPS, 4); // steps 5
-  ch.editParam(GATE_HITS, 2);  // hits 3
-  ch.editParam(GATE_DUTY, -20); // duty 30
+  ch.editParam(CP_STEPS, 4); // steps 5
+  ch.editParam(CP_HITS, 2);  // hits 3
+  ch.editParam(CP_DUTY, -20); // duty 30
   ch.setCv1Target(CV_OFFSET);
   ch.setMute(true);
   ch.setChoke(3);
@@ -167,9 +167,9 @@ void test_save_load_roundtrip(void) {
 
   Channel loaded;
   loaded.load(payload);
-  TEST_ASSERT_EQUAL_INT(5, loaded.paramValue(GATE_STEPS, false));
-  TEST_ASSERT_EQUAL_INT(3, loaded.paramValue(GATE_HITS, false));
-  TEST_ASSERT_EQUAL_INT(30, loaded.paramValue(GATE_DUTY, false));
+  TEST_ASSERT_EQUAL_INT(5, loaded.paramValue(CP_STEPS, false));
+  TEST_ASSERT_EQUAL_INT(3, loaded.paramValue(CP_HITS, false));
+  TEST_ASSERT_EQUAL_INT(30, loaded.paramValue(CP_DUTY, false));
   TEST_ASSERT_EQUAL_INT(5, loaded.getClockModIndex(false));
   TEST_ASSERT_EQUAL(CV_OFFSET, loaded.getCv1Target());
   TEST_ASSERT_TRUE(loaded.isMuted());
@@ -182,6 +182,27 @@ void test_choke_field(void) {
   TEST_ASSERT_EQUAL_UINT8(0, ch.getChoke());
   ch.setChoke(4);
   TEST_ASSERT_EQUAL_UINT8(4, ch.getChoke());
+}
+
+// ROTATE cyclically shifts the euclidean pattern. E(5,2) = X__X_; rotate 1 =
+// _X__X; rotate 2 = X_X__.
+void test_pattern_rotate(void) {
+  Channel ch;
+  ch.editParam(CP_STEPS, 4); // 1 -> 5
+  ch.editParam(CP_HITS, 1);  // 1 -> 2
+  const bool base[5] = {true, false, false, true, false}; // X__X_
+  for (uint8_t i = 0; i < 5; i++)
+    TEST_ASSERT_EQUAL(base[i], ch.patternHit(i));
+
+  ch.editParam(CP_ROTATE, 1); // _X__X
+  const bool r1[5] = {false, true, false, false, true};
+  for (uint8_t i = 0; i < 5; i++)
+    TEST_ASSERT_EQUAL(r1[i], ch.patternHit(i));
+
+  ch.editParam(CP_ROTATE, 1); // rotate = 2 -> X_X__
+  const bool r2[5] = {true, false, true, false, false};
+  for (uint8_t i = 0; i < 5; i++)
+    TEST_ASSERT_EQUAL(r2[i], ch.patternHit(i));
 }
 
 // The choke rule that HandleIntClockTick applies: a channel whose choke source's
@@ -220,6 +241,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_cv_param_targeting);
   RUN_TEST(test_save_load_roundtrip);
   RUN_TEST(test_choke_field);
+  RUN_TEST(test_pattern_rotate);
   RUN_TEST(test_choke_silences_when_source_on);
   return UNITY_END();
 }

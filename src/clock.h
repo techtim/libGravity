@@ -24,7 +24,7 @@
 #define MIDI_STOP 0xFC
 #define MIDI_CONTINUE 0xFB
 
-static void serialEventNoop(uint8_t msg, uint8_t status) {}
+static bool serialEventNoop(unsigned char msg, unsigned char status) { return true; }
 
 class Clock {
 public:
@@ -162,7 +162,7 @@ public:
 private:
   Source source_ = SOURCE_INTERNAL;
 
-  static void onSerialEvent(uint8_t msg, uint8_t status) {
+  static bool onSerialEvent(unsigned char msg, unsigned char status) {
     // Note: uClock.start()/stop() already echo MIDI Start/Stop via the clock start/stop callbacks,
     switch (msg) {
     case MIDI_CLOCK:
@@ -179,6 +179,7 @@ private:
       uClock.start();
       break;
     }
+    return true;
   }
 
   static void sendMIDIStart() { NeoSerial.write(MIDI_START); }

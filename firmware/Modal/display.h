@@ -315,6 +315,7 @@ void DisplayMainPage() {
     case Clock::SOURCE_EXTERNAL_PPQN_2: copyP(g_sub, sizeof(g_sub), F("2 PPQN")); break;
     case Clock::SOURCE_EXTERNAL_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN")); break;
     case Clock::SOURCE_EXTERNAL_MIDI: copyP(g_sub, sizeof(g_sub), F("MIDI")); break;
+    default: break;
     }
     break;
   case PARAM_MAIN_PULSE:
@@ -324,6 +325,7 @@ void DisplayMainPage() {
     case Clock::PULSE_PPQN_24: copyP(g_sub, sizeof(g_sub), F("24 PPQN PULSE")); break;
     case Clock::PULSE_PPQN_4: copyP(g_sub, sizeof(g_sub), F("4 PPQN PULSE")); break;
     case Clock::PULSE_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN PULSE")); break;
+    default: break;
     }
     break;
   case PARAM_MAIN_ENCODER_DIR: {

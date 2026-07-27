@@ -35,6 +35,7 @@ public:
   struct Metadata {
     char sketch_name[16];
     char version[16];
+    uint16_t layout; // struct-size signature; mismatch => stale layout => reset
     byte selected_save_slot;
     bool encoder_reversed;
     bool rotate_display;
