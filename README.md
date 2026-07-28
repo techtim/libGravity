@@ -41,6 +41,8 @@ firmware/
   Gravity/                 Alt firmware: probability / duty / offset / swing channels
   Euclidean/               Alt firmware: Euclidean rhythm generator channels
   Modal/                   Unified firmware: each channel picks a func (PROB or EUCLID);
+  GravityPlus/             Unified firmware: every channel is one Euclidean+probability gate
+                           generator (steps/hits/rotate/prob/duty/offset/swing + choke + CV cal)
 examples/                  Small standalone sketches demonstrating the library
 test/                      Host unit tests (PlatformIO + ArduinoFake, see below)
   native_compat/           Host-only shims for AVR headers (util/atomic, pgmspace)

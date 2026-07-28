@@ -1,14 +1,9 @@
 /**
  * @file display.h
- * @author Adam Wonak (https://github.com/awonak/)
- * @brief Alt firmware version of Gravity by Sitka Instruments.
- * @version 2.0.2
- * @date 2025-07-04
- *
- * @copyright MIT - (c) 2025 - Adam Wonak - adam.wonak@gmail.com
- *
+ * @brief OLED UI for GravityPlus. The global page is unchanged from the shared
+ *        Gravity UI; the channel page renders the fixed clock-mod + six gate
+ *        params + two CV targets.
  */
-
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
@@ -114,9 +109,10 @@ static const unsigned char pause_icon[28] PROGMEM = {
 
 // Constants for screen layout and fonts
 constexpr uint8_t SCREEN_CENTER_X = 32;
-constexpr uint8_t MAIN_TEXT_Y = 26;
-constexpr uint8_t SUB_TEXT_Y = 40;
+constexpr uint8_t MAIN_TEXT_Y = 34;
+constexpr uint8_t SUB_TEXT_Y = 44;
 constexpr uint8_t VISIBLE_MENU_ITEMS = 3;
+constexpr uint8_t MENU_ITEM_Y = 4;
 constexpr uint8_t MENU_ITEM_HEIGHT = 14;
 constexpr uint8_t MENU_BOX_PADDING = 4;
 constexpr uint8_t MENU_BOX_WIDTH = 64;
@@ -129,8 +125,6 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_TEMPO,
   PARAM_MAIN_RUN,
   PARAM_MAIN_RESET,
-  PARAM_MAIN_CV1_RANGE,
-  PARAM_MAIN_CV2_RANGE,
   PARAM_MAIN_SOURCE,
   PARAM_MAIN_PULSE,
   PARAM_MAIN_ENCODER_DIR,
@@ -138,16 +132,20 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_SAVE_DATA,
   PARAM_MAIN_LOAD_DATA,
   PARAM_MAIN_RESET_STATE,
+  // CV calibration sits just above ERASE.
+  PARAM_MAIN_CV1_CAL_LO,
+  PARAM_MAIN_CV1_CAL_ZERO,
+  PARAM_MAIN_CV1_CAL_HI,
+  PARAM_MAIN_CV2_CAL_LO,
+  PARAM_MAIN_CV2_CAL_ZERO,
+  PARAM_MAIN_CV2_CAL_HI,
   PARAM_MAIN_FACTORY_RESET,
   PARAM_MAIN_LAST,
 };
 
-// (Channel-page params are dynamic; see app_state.h ChannelParamFixed + the
-// func's own params. There is no fixed ParamsChannelPage enum.)
-
 // Scratch text buffers. We avoid the Arduino String class here: on AVR it pulls
 // in operator+, number formatting and the heap (~1.5KB of flash). Building the
-// two on-screen lines into fixed buffers keeps the Modal firmware within flash.
+// two on-screen lines into fixed buffers keeps the firmware within flash.
 static char g_main[16];
 static char g_sub[20];
 
@@ -164,13 +162,6 @@ void drawCenteredText(const char *text, int y, const uint8_t *font) {
   gravity.display.drawStr(SCREEN_CENTER_X - (textWidth / 2), y, text);
 }
 
-// Draw a centered flash string.
-void drawCenteredTextP(const __FlashStringHelper *f, int y,
-                       const uint8_t *font) {
-  copyP(g_sub, sizeof(g_sub), f);
-  drawCenteredText(g_sub, y, font);
-}
-
 // Helper function to draw right-aligned text
 void drawRightAlignedText(const char *text, int y) {
   int textWidth = gravity.display.getStrWidth(text);
@@ -180,13 +171,14 @@ void drawRightAlignedText(const char *text, int y) {
 
 void drawMainSelection() {
   gravity.display.setDrawColor(1);
+  const int offsetY = 5;
   const int tickSize = 3;
   const int mainWidth = SCREEN_WIDTH / 2;
-  const int mainHeight = 49;
-  gravity.display.drawLine(0, 0, tickSize, 0);
-  gravity.display.drawLine(0, 0, 0, tickSize);
-  gravity.display.drawLine(mainWidth, 0, mainWidth - tickSize, 0);
-  gravity.display.drawLine(mainWidth, 0, mainWidth, tickSize);
+  const int mainHeight = 46;
+  gravity.display.drawLine(0, offsetY, tickSize, offsetY);
+  gravity.display.drawLine(0, offsetY, 0, tickSize + offsetY);
+  gravity.display.drawLine(mainWidth, offsetY, mainWidth - tickSize, offsetY);
+  gravity.display.drawLine(mainWidth, offsetY, mainWidth, tickSize + offsetY);
   gravity.display.drawLine(mainWidth, mainHeight, mainWidth,
                            mainHeight - tickSize);
   gravity.display.drawLine(mainWidth, mainHeight, mainWidth - tickSize,
@@ -197,7 +189,6 @@ void drawMainSelection() {
 }
 
 void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
-  // Draw menu items
   gravity.display.setFont(TEXT_FONT);
 
   // Draw selected menu item box
@@ -209,7 +200,7 @@ void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
   }
 
   int boxX = MENU_BOX_WIDTH + 1;
-  int boxY = selectedBoxY + 2;
+  int boxY = MENU_ITEM_Y + selectedBoxY + 2;
   int boxWidth = MENU_BOX_WIDTH - 1;
   int boxHeight = MENU_ITEM_HEIGHT + 1;
 
@@ -228,16 +219,35 @@ void drawMenuItems(const __FlashStringHelper *menu_items[], int menu_size) {
     start_index = app.selected_param - 1;
   }
 
-  for (int i = 0; i < min(menu_size, VISIBLE_MENU_ITEMS); ++i) {
+  for (uint8_t i = 0; i < min(menu_size, VISIBLE_MENU_ITEMS); ++i) {
     int idx = start_index + i;
     copyP(g_sub, sizeof(g_sub), menu_items[idx]);
-    drawRightAlignedText(g_sub, MENU_ITEM_HEIGHT * (i + 1) - 1);
+    drawRightAlignedText(g_sub, MENU_ITEM_Y + MENU_ITEM_HEIGHT * (i + 1) - 1);
   }
 }
 
-// Visual indicators for main section of screen.
+// Visual indicator: mark the active save slot.
 inline void solidTick() { gravity.display.drawBox(56, 4, 4, 4); }
-inline void hollowTick() { gravity.display.drawBox(56, 4, 4, 4); }
+
+// Center-zero horizontal bar meter for a bipolar CV reading (-512..+512). The
+// fill grows right of centre for positive readings, left for negative.
+void drawCvMeter(int value, int x, int y, int w, int h) {
+  const int half = w / 2;
+  const int cx = x + half;
+  gravity.display.setDrawColor(1);
+  gravity.display.drawFrame(x, y, w, h);
+  gravity.display.drawVLine(cx, y - 2, h + 4); // centre tick
+  if (value >= 0) {
+    int fill = constrain(map(value, 0, 512, 0, half), 0, half);
+    if (fill > 0)
+      gravity.display.drawBox(cx, y, fill, h);
+  } else {
+    int fill = constrain(map(-value, 0, 512, 0, half), 0, half);
+    if (fill > 0)
+      gravity.display.drawBox(cx - fill, y, fill, h);
+  }
+  gravity.display.setDrawColor(2);
+}
 
 // Human friendly display value for save slot, written into `out` (e.g. "A3").
 void displaySaveSlot(char *out, int slot) {
@@ -251,16 +261,17 @@ void displaySaveSlot(char *out, int slot) {
   }
 }
 
-// Main display functions
-
+// Main (global) settings page.
 void DisplayMainPage() {
   gravity.display.setFontMode(1);
   gravity.display.setDrawColor(2);
   gravity.display.setFont(TEXT_FONT);
 
-  // Display selected editable value (built into the shared text buffers).
   g_main[0] = '\0';
   g_sub[0] = '\0';
+  // The CV range params draw a live signal meter in place of the big value.
+  bool show_cv_meter = false;
+  int cv_meter_value = 0;
 
   switch (app.selected_param) {
   case PARAM_MAIN_TEMPO:
@@ -283,24 +294,29 @@ void DisplayMainPage() {
   case PARAM_MAIN_RESET:
     copyP(g_main, sizeof(g_main), F("RST"));
     switch (app.cv_reset) {
-    case 0: copyP(g_sub, sizeof(g_sub), F("NONE")); break;
-    case 1: copyP(g_sub, sizeof(g_sub), F("CV1 TRIG")); break;
-    case 2: copyP(g_sub, sizeof(g_sub), F("CV2 TRIG")); break;
-    case 3: copyP(g_sub, sizeof(g_sub), F("EXT TRIG")); break;
+    case CV_RESET_NONE: copyP(g_sub, sizeof(g_sub), F("NONE")); break;
+    case CV_RESET_CV1: copyP(g_sub, sizeof(g_sub), F("CV1 TRIG")); break;
+    case CV_RESET_CV2: copyP(g_sub, sizeof(g_sub), F("CV2 TRIG")); break;
+    case CV_RESET_EXT: copyP(g_sub, sizeof(g_sub), F("EXT TRIG")); break;
     }
     break;
-  case PARAM_MAIN_CV1_RANGE: {
-    copyP(g_main, sizeof(g_main), F("CV1"));
-    bool uni = app.editing_param ? (app.selected_sub_param == 1)
-                                 : app.cv1_unipolar;
-    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
-    break;
-  }
-  case PARAM_MAIN_CV2_RANGE: {
-    copyP(g_main, sizeof(g_main), F("CV2"));
-    bool uni = app.editing_param ? (app.selected_sub_param == 1)
-                                 : app.cv2_unipolar;
-    copyP(g_sub, sizeof(g_sub), uni ? F("UNIPOLAR") : F("BIPOLAR"));
+  case PARAM_MAIN_CV1_CAL_LO:
+  case PARAM_MAIN_CV1_CAL_ZERO:
+  case PARAM_MAIN_CV1_CAL_HI:
+  case PARAM_MAIN_CV2_CAL_LO:
+  case PARAM_MAIN_CV2_CAL_ZERO:
+  case PARAM_MAIN_CV2_CAL_HI: {
+    bool is1 = app.selected_param <= PARAM_MAIN_CV1_CAL_HI;
+    cv_meter_value = is1 ? gravity.cv1.Read() : gravity.cv2.Read();
+    show_cv_meter = true; // tune against the live reading
+    switch (app.selected_param) {
+    case PARAM_MAIN_CV1_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL -5V")); break;
+    case PARAM_MAIN_CV1_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL 0V")); break;
+    case PARAM_MAIN_CV1_CAL_HI: copyP(g_sub, sizeof(g_sub), F("CV1 CAL +5V")); break;
+    case PARAM_MAIN_CV2_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL -5V")); break;
+    case PARAM_MAIN_CV2_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL 0V")); break;
+    default: copyP(g_sub, sizeof(g_sub), F("CV2 CAL +5V")); break;
+    }
     break;
   }
   case PARAM_MAIN_SOURCE:
@@ -330,7 +346,6 @@ void DisplayMainPage() {
     break;
   case PARAM_MAIN_ENCODER_DIR: {
     copyP(g_main, sizeof(g_main), F("DIR"));
-    // While editing show the pending selection; otherwise the actual setting.
     bool reversed = app.editing_param ? (app.selected_sub_param == 1)
                                       : app.encoder_reversed;
     copyP(g_sub, sizeof(g_sub), reversed ? F("REVERSED") : F("DEFAULT"));
@@ -349,7 +364,6 @@ void DisplayMainPage() {
       copyP(g_main, sizeof(g_main), F("x"));
       copyP(g_sub, sizeof(g_sub), F("BACK TO MAIN"));
     } else {
-      // Indicate currently active slot.
       if (app.selected_sub_param == app.selected_save_slot) {
         solidTick();
       }
@@ -379,55 +393,66 @@ void DisplayMainPage() {
     break;
   }
 
-  drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
+  if (show_cv_meter) {
+    drawCvMeter(cv_meter_value, 2, 18, 60, 12);
+  } else {
+    drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
+  }
   drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
-  // Draw Main Page menu items
   const __FlashStringHelper *menu_items[PARAM_MAIN_LAST] = {
-      F("TEMPO"),     F("RUN"),         F("RESTART"),
-      F("CV1 RANGE"), F("CV2 RANGE"),   F("SOURCE"),
-      F("PULSE OUT"), F("ENCODER DIR"), F("ROTATE DISP"),
-      F("SAVE"),      F("LOAD"),        F("RESET"),
+      F("TEMPO"),       F("RUN"),         F("RESTART"),
+      F("SOURCE"),      F("PULSE OUT"),   F("ENCODER DIR"),
+      F("ROTATE DISP"), F("SAVE"),        F("LOAD"),
+      F("RESET"),
+      F("CV1 CAL -5V"), F("CV1 CAL 0V"),  F("CV1 CAL +5V"),
+      F("CV2 CAL -5V"), F("CV2 CAL 0V"),  F("CV2 CAL +5V"),
       F("ERASE")};
   drawMenuItems(menu_items, PARAM_MAIN_LAST);
 }
 
-// Human-friendly label for a CV routing target on the given channel.
-const __FlashStringHelper *cvTargetLabel(const Channel &ch, CvTarget t) {
-  if (t == CV_NONE)
-    return F("NONE");
-  if (t == CV_CLOCK_MOD)
-    return F("CLOCK MOD");
-  uint8_t i = t - CV_PARAM_0;
-  return (i < ch.paramCount()) ? ch.paramLabel(i) : F("NONE");
+// Human-friendly label for a CV routing target.
+const __FlashStringHelper *cvTargetLabel(CvTarget t) {
+  switch (t) {
+  case CV_NONE: return F("NONE");
+  default: return Channel::paramLabel(t - 1);
+  }
 }
 
-// The channel page is func-agnostic: it renders a fixed pair of params (func
-// select, clock mod), then the current func's own params, then the two CV
-// routing targets. Nothing here is func-specific, so new funcs need no edits.
+// Per-channel page: clock mod, the six gate params, then the two CV targets.
+// Draw the channel's euclidean pattern along the top: 3x3 px per step, filled
+// box for a hit, frame for a rest, centered on the step count.
+void drawChannelPattern(const Channel &ch) {
+  const uint8_t step_box_size = 4;
+  uint8_t steps = ch.patternSteps();
+  int x0 = (SCREEN_WIDTH - steps * step_box_size) / 2;
+  gravity.display.setDrawColor(1);
+  for (uint8_t i = 0; i < steps; ++i) {
+    int x = x0 + i * step_box_size;
+    if (ch.patternHit(i))
+      gravity.display.drawBox(x, 0, step_box_size, step_box_size);
+    else
+      gravity.display.drawFrame(x, 0, step_box_size, step_box_size);
+  }
+  gravity.display.setDrawColor(2);
+}
+
 void DisplayChannelPage() {
   auto &ch = GetSelectedChannel();
 
   gravity.display.setFontMode(1);
   gravity.display.setDrawColor(2);
 
+  drawChannelPattern(ch);
+
   g_main[0] = '\0';
   g_sub[0] = '\0';
-  const uint8_t *mainFont = LARGE_FONT;
 
   // When editing show the base value; otherwise the CV-modulated value.
   bool withCvMod = !app.editing_param;
-
   const uint8_t param = app.selected_param;
-  const uint8_t func_params = ch.paramCount();
-  const uint8_t cv1_idx = channelCv1ParamIndex(ch);
-  const uint8_t cv2_idx = channelCv2ParamIndex(ch);
 
-  if (param == CH_PARAM_FUNC) {
-    // Func names use the full alphabet, so render them in the small font.
-    copyP(g_main, sizeof(g_main), ch.funcName(false));
-    copyP(g_sub, sizeof(g_sub), ch.funcName(true));
-  } else if (param == CH_PARAM_CLOCK_MOD) {
+  if (param == CP_CLOCK_MOD) {
     int mod_value = ch.getClockMod(withCvMod);
     if (mod_value > 1) {
       g_main[0] = '/';
@@ -438,62 +463,57 @@ void DisplayChannelPage() {
       itoa(abs(mod_value), g_main + 1, 10);
       copyP(g_sub, sizeof(g_sub), F("MULTIPLY"));
     }
-  } else if (param < cv1_idx) {
-    // Func parameter.
-    uint8_t i = param - CH_PARAM_FUNC_BASE;
-    itoa(ch.paramValue(i, withCvMod), g_main, 10);
-    copyP(g_sub, sizeof(g_sub), ch.paramLabel(i));
+  } else if (pageParamIsGate(param)) {
+    itoa(ch.paramValue(param, withCvMod), g_main, 10);
+    copyP(g_sub, sizeof(g_sub), Channel::paramLabel(param));
+  } else if (param == CP_CHOKE) {
+    uint8_t src = ch.getChoke();
+    if (src == 0)
+      copyP(g_main, sizeof(g_main), F("OFF"));
+    else
+      itoa(src, g_main, 10);
+    copyP(g_sub, sizeof(g_sub), F("CHOKE BY"));
   } else {
-    // CV1 / CV2 routing target.
-    bool is_cv1 = (param == cv1_idx);
+    bool is_cv1 = (param == CP_CV1);
     copyP(g_main, sizeof(g_main), is_cv1 ? F("CV1") : F("CV2"));
     copyP(g_sub, sizeof(g_sub),
-          cvTargetLabel(ch, is_cv1 ? ch.getCv1Target() : ch.getCv2Target()));
+          cvTargetLabel(is_cv1 ? ch.getCv1Target() : ch.getCv2Target()));
   }
 
-  drawCenteredText(g_main, MAIN_TEXT_Y, mainFont);
+  drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
   drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
-  // Build the channel menu items dynamically from the current func.
-  const __FlashStringHelper *menu_items[MAX_CHANNEL_PARAMS];
-  menu_items[CH_PARAM_FUNC] = F("FUNC");
-  menu_items[CH_PARAM_CLOCK_MOD] = F("MOD");
-  for (uint8_t i = 0; i < func_params; i++)
-    menu_items[CH_PARAM_FUNC_BASE + i] = ch.paramLabel(i);
-  menu_items[cv1_idx] = F("CV1 MOD");
-  menu_items[cv2_idx] = F("CV2 MOD");
-  drawMenuItems(menu_items, channelParamCount(ch));
+  // Labels come from Channel::paramLabel (single source), indexed by ChannelPageParam.
+  const __FlashStringHelper *menu_items_channel[CHANNEL_PAGE_PARAM_COUNT];
+  for (uint8_t i = 0; i < CHANNEL_PAGE_PARAM_COUNT; ++i)
+    menu_items_channel[i] = Channel::paramLabel(i);
+  drawMenuItems(menu_items_channel, CHANNEL_PAGE_PARAM_COUNT);
 }
 
 void DisplaySelectedChannel() {
-  int boxX = CHANNEL_BOX_WIDTH;
   int boxY = CHANNEL_BOXES_Y;
   int boxWidth = CHANNEL_BOX_WIDTH;
   int boxHeight = CHANNEL_BOX_HEIGHT;
   int textOffset = 7; // Half of font width
 
-  // Draw top and right side of frame.
   gravity.display.drawHLine(1, boxY, SCREEN_WIDTH - 2);
   gravity.display.drawVLine(SCREEN_WIDTH - 2, boxY, boxHeight);
 
-  for (int i = 0; i < Gravity::OUTPUT_COUNT + 1; i++) {
-    // Draw box frame or filled selected box.
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT + 1; ++i) {
     gravity.display.setDrawColor(1);
     (app.selected_channel == i)
         ? gravity.display.drawBox(i * boxWidth, boxY, boxWidth, boxHeight)
         : gravity.display.drawVLine(i * boxWidth, boxY, boxHeight);
 
-    // Draw clock status icon or each channel number.
     gravity.display.setDrawColor(2);
     if (i == 0) {
       gravity.display.setBitmapMode(1);
       auto icon = gravity.clock.IsPaused() ? pause_icon : play_icon;
-      gravity.display.drawXBMP(2, boxY, play_icon_width, play_icon_height,
-                               icon);
+      gravity.display.drawXBMP(2, boxY, play_icon_width, play_icon_height, icon);
     } else {
       gravity.display.setFont(TEXT_FONT);
       gravity.display.setCursor((i * boxWidth) + textOffset, SCREEN_HEIGHT - 3);
-      if (app.channel[i-1].isMuted()) {
+      if (app.channel[i - 1].isMuted()) {
         gravity.display.print("M");
       } else {
         gravity.display.print(i);
@@ -511,7 +531,6 @@ void UpdateDisplay() {
     } else {
       DisplayChannelPage();
     }
-    // Global channel select UI.
     DisplaySelectedChannel();
   } while (gravity.display.nextPage());
 }
