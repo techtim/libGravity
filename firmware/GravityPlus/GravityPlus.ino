@@ -38,7 +38,7 @@ StateManager stateManager;
 // Forward declarations.
 void updateSelection(byte &param, int change, int maxValue);
 void editMainParameter(int val);
-void editChannelParameter(int val);
+void editChannelParameter(int val, bool held);
 void InitGravity(AppState &app);
 void ApplyCvCal();
 void ResetOutputs();
@@ -304,7 +304,7 @@ void HandleEncoderHeldRotate(int val) {
   if (app.selected_channel == 0) {
     editMainParameter(val);
   } else {
-    editChannelParameter(val);
+    editChannelParameter(val, /*held=*/true); // hold+rotate -> CV destination
   }
   app.refresh_screen = true;
 }
@@ -328,7 +328,7 @@ void HandleRotate(int val) {
     if (app.selected_channel == 0) {
       editMainParameter(val);
     } else {
-      editChannelParameter(val);
+      editChannelParameter(val, /*held=*/false); // click+rotate -> CV amount
     }
   }
   app.refresh_screen = true;
@@ -404,7 +404,9 @@ void editMainParameter(int val) {
   }
 }
 
-void editChannelParameter(int val) {
+// held = true for a press-and-hold rotate (selects the CV destination); false
+// for a latched click-then-rotate (adjusts the CV amount).
+void editChannelParameter(int val, bool held) {
   auto &ch = GetSelectedChannel();
   const uint8_t param = app.selected_param;
 
@@ -425,14 +427,16 @@ void editChannelParameter(int val) {
     }
     ch.setChoke(src);
   } else {
-    // CP_CV1 / CP_CV2 routing target. Valid targets are CV_NONE..CV_SWING.
-    bool is_cv1 = (param == CP_CV1);
-    byte t = static_cast<int>(is_cv1 ? ch.getCv1Target() : ch.getCv2Target());
-    updateSelection(t, val, CV_TARGET_COUNT);
-    if (is_cv1)
-      ch.setCv1Target(static_cast<CvTarget>(t));
-    else
-      ch.setCv2Target(static_cast<CvTarget>(t));
+    // CV mod slot (CV1-A/B, CV2-A/B). Hold+rotate picks the destination;
+    // click+rotate sets the amount (-100..100, negative inverts).
+    uint8_t slot = param - CP_CV1A;
+    if (held) {
+      byte t = static_cast<int>(ch.getCvDest(slot));
+      updateSelection(t, val, CV_TARGET_COUNT); // CV_NONE..CV_SWING
+      ch.setCvDest(slot, static_cast<CvTarget>(t));
+    } else {
+      ch.setCvAmount(slot, ch.getCvAmount(slot) + val);
+    }
   }
 }
 

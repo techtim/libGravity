@@ -13,8 +13,10 @@ const char StateManager::SKETCH_NAME[] = "GRAVITY PLUS";
 // Bumped for per-channel choke + per-input CV calibration (one-time reset).
 const char StateManager::SEMANTIC_VERSION[] = "V1.0.3";
 
-const byte StateManager::MAX_SAVE_SLOTS = 10;
-const byte StateManager::TRANSIENT_SLOT = 10;
+// Reduced from 10 to 6 to fit the 4-slot CV routing (bigger per-channel record)
+// within the 1 KB EEPROM. Slots display as A1-A3 / B1-B3.
+const byte StateManager::MAX_SAVE_SLOTS = 6;
+const byte StateManager::TRANSIENT_SLOT = 6;
 
 const unsigned long StateManager::SAVE_DELAY_MS = 2000;
 
@@ -22,8 +24,8 @@ const int StateManager::METADATA_START_ADDR = 0;
 const int StateManager::EEPROM_DATA_START_ADDR = sizeof(StateManager::Metadata);
 
 // The Nano's ATmega328P has 1 KB of EEPROM. Fail the build if the save data
-// (11 slots + metadata) ever overflows it.
-static_assert(sizeof(StateManager::EepromData) * 11 +
+// (MAX_SAVE_SLOTS + transient + metadata) ever overflows it. 7 = 6 slots + 1.
+static_assert(sizeof(StateManager::EepromData) * 7 +
                       sizeof(StateManager::Metadata) <=
                   1024,
               "GravityPlus save data exceeds the ATmega328P 1KB EEPROM");
@@ -115,7 +117,7 @@ void StateManager::factoryReset(AppState &app) {
 // Bump on ANY change to the persisted layout that keeps the struct sizes the
 // same - e.g. reordering the gate params. Size changes are caught automatically
 // below; order-only changes are not, so they need this.
-static const uint16_t LAYOUT_REVISION = 2;
+static const uint16_t LAYOUT_REVISION = 3;
 
 // Layout signature: struct sizes + the manual revision. A mismatch forces a
 // one-time factory reset even when the version string is reused.

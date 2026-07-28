@@ -143,8 +143,9 @@ void test_cv_param_targeting(void) {
   ch.editParam(CP_STEPS, 3); // base steps = 4
   TEST_ASSERT_EQUAL_INT(4, ch.paramValue(CP_STEPS, true)); // not routed -> base
 
-  ch.setCv1Target(CV_STEPS);
-  ch.applyCvMod(512, 0); // steps 4 + map(512,-512,512,0,32)=32 -> clamp 32
+  ch.setCvDest(0, CV_STEPS); // slot CV1-A -> STEPS
+  ch.setCvAmount(0, 100);
+  ch.applyCvMod(512, 0); // steps 4 + 512*100/512 = 104 -> clamp 32
   TEST_ASSERT_EQUAL_INT(32, ch.paramValue(CP_STEPS, true)); // routed -> live
   TEST_ASSERT_EQUAL_INT(4, ch.paramValue(CP_STEPS, false)); // base unchanged
   TEST_ASSERT_EQUAL_INT(ch.paramValue(CP_PROB, false),
@@ -158,7 +159,8 @@ void test_save_load_roundtrip(void) {
   ch.editParam(CP_STEPS, 4); // steps 5
   ch.editParam(CP_HITS, 2);  // hits 3
   ch.editParam(CP_DUTY, -20); // duty 30
-  ch.setCv1Target(CV_OFFSET);
+  ch.setCvDest(2, CV_OFFSET); // slot CV2-A -> OFFSET
+  ch.setCvAmount(2, -40);
   ch.setMute(true);
   ch.setChoke(3);
 
@@ -171,7 +173,8 @@ void test_save_load_roundtrip(void) {
   TEST_ASSERT_EQUAL_INT(3, loaded.paramValue(CP_HITS, false));
   TEST_ASSERT_EQUAL_INT(30, loaded.paramValue(CP_DUTY, false));
   TEST_ASSERT_EQUAL_INT(5, loaded.getClockModIndex(false));
-  TEST_ASSERT_EQUAL(CV_OFFSET, loaded.getCv1Target());
+  TEST_ASSERT_EQUAL(CV_OFFSET, loaded.getCvDest(2));
+  TEST_ASSERT_EQUAL_INT(-40, loaded.getCvAmount(2));
   TEST_ASSERT_TRUE(loaded.isMuted());
   TEST_ASSERT_EQUAL_UINT8(3, loaded.getChoke());
 }

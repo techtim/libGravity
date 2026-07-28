@@ -474,10 +474,16 @@ void DisplayChannelPage() {
       itoa(src, g_main, 10);
     copyP(g_sub, sizeof(g_sub), F("CHOKE BY"));
   } else {
-    bool is_cv1 = (param == CP_CV1);
-    copyP(g_main, sizeof(g_main), is_cv1 ? F("CV1") : F("CV2"));
-    copyP(g_sub, sizeof(g_sub),
-          cvTargetLabel(is_cv1 ? ch.getCv1Target() : ch.getCv2Target()));
+    // CV mod slot (CV1-A/B, CV2-A/B): big value = amount, sub = destination.
+    uint8_t slot = param - CP_CV1A;
+    CvTarget dest = ch.getCvDest(slot);
+    if (dest == CV_NONE) {
+      copyP(g_main, sizeof(g_main), F("--"));
+      copyP(g_sub, sizeof(g_sub), F("NONE"));
+    } else {
+      itoa(ch.getCvAmount(slot), g_main, 10);
+      copyP(g_sub, sizeof(g_sub), cvTargetLabel(dest));
+    }
   }
 
   drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
