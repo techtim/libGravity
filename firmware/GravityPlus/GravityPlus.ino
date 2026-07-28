@@ -37,7 +37,7 @@ StateManager stateManager;
 
 // Forward declarations.
 void updateSelection(byte &param, int change, int maxValue);
-void editMainParameter(int val);
+void editMainParameter(int val, bool held);
 void editChannelParameter(int val, bool held);
 void InitGravity(AppState &app);
 void ApplyCvCal();
@@ -78,9 +78,10 @@ void setup() {
 void loop() {
   gravity.Process();
 
-  // Bipolar CV readings (-512..+512) feed channel modulation directly.
-  int cv1 = gravity.cv1.Read();
-  int cv2 = gravity.cv2.Read();
+  // Bipolar CV readings reduced to -127..127 (Read() >> 2) so reading * amount
+  // stays within a 16-bit int in applyCvMod.
+  int8_t cv1 = constrain(gravity.cv1.Read() >> 2, -127, 127);
+  int8_t cv2 = constrain(gravity.cv2.Read() >> 2, -127, 127);
 
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     auto &ch = app.channel[i];
@@ -229,10 +230,12 @@ void ExitEditing() {
     case PARAM_MAIN_ENCODER_DIR:
       app.encoder_reversed = app.selected_sub_param == 1;
       gravity.encoder.SetReverseDirection(app.encoder_reversed);
+      stateManager.markMetadataDirty();
       break;
     case PARAM_MAIN_ROTATE_DISP:
       app.rotate_display = app.selected_sub_param == 1;
       gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
+      stateManager.markMetadataDirty();
       break;
     case PARAM_MAIN_SAVE_DATA:
       if (app.selected_sub_param < StateManager::MAX_SAVE_SLOTS) {
@@ -302,7 +305,7 @@ void HandleEncoderHeldRotate(int val) {
     EnterEditing();
   }
   if (app.selected_channel == 0) {
-    editMainParameter(val);
+    editMainParameter(val, /*held=*/true);
   } else {
     editChannelParameter(val, /*held=*/true); // hold+rotate -> CV destination
   }
@@ -322,11 +325,11 @@ void HandleRotate(int val) {
   }
   if (!app.editing_param) {
     const int max_param =
-        (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CHANNEL_PAGE_PARAM_COUNT;
+        (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CP_PARAM_COUNT;
     updateSelection(app.selected_param, val, max_param);
   } else {
     if (app.selected_channel == 0) {
-      editMainParameter(val);
+      editMainParameter(val, /*held=*/false);
     } else {
       editChannelParameter(val, /*held=*/false); // click+rotate -> CV amount
     }
@@ -338,7 +341,7 @@ void HandlePressedRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
   // Keep the selected param across channels; clamp to the destination page.
   int max_param =
-      (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CHANNEL_PAGE_PARAM_COUNT;
+      (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CP_PARAM_COUNT;
   if (app.selected_param >= max_param) {
     app.selected_param = max_param - 1;
   }
@@ -346,13 +349,13 @@ void HandlePressedRotate(int val) {
   app.refresh_screen = true;
 }
 
-void editMainParameter(int val) {
+void editMainParameter(int val, bool held) {
   switch (static_cast<ParamsMainPage>(app.selected_param)) {
   case PARAM_MAIN_TEMPO:
     if (gravity.clock.ExternalSource()) {
       break;
     }
-    gravity.clock.SetTempo(gravity.clock.Tempo() + val);
+    gravity.clock.SetTempo(gravity.clock.Tempo() + val * (held ? 5 : 1));
     app.tempo = gravity.clock.Tempo();
     break;
   case PARAM_MAIN_RUN:
@@ -381,12 +384,36 @@ void editMainParameter(int val) {
   }
   // CV calibration: adjust the raw endpoint / zero directly (live), *8 for a
   // usable tuning step. Watch the on-screen meter and tune to 0 / +-full.
-  case PARAM_MAIN_CV1_CAL_LO: app.cv1_cal_low += val * 8; ApplyCvCal(); break;
-  case PARAM_MAIN_CV1_CAL_ZERO: app.cv1_cal_offset += val * 8; ApplyCvCal(); break;
-  case PARAM_MAIN_CV1_CAL_HI: app.cv1_cal_high += val * 8; ApplyCvCal(); break;
-  case PARAM_MAIN_CV2_CAL_LO: app.cv2_cal_low += val * 8; ApplyCvCal(); break;
-  case PARAM_MAIN_CV2_CAL_ZERO: app.cv2_cal_offset += val * 8; ApplyCvCal(); break;
-  case PARAM_MAIN_CV2_CAL_HI: app.cv2_cal_high += val * 8; ApplyCvCal(); break;
+  case PARAM_MAIN_CV1_CAL_LO:
+    app.cv1_cal_low += val * 8 * (held ? 5 : 1);
+    ApplyCvCal();
+    stateManager.markMetadataDirty();
+    break;
+  case PARAM_MAIN_CV1_CAL_ZERO:
+    app.cv1_cal_offset += val * 8 * (held ? 5 : 1);
+    ApplyCvCal();
+    stateManager.markMetadataDirty();
+    break;
+  case PARAM_MAIN_CV1_CAL_HI:
+    app.cv1_cal_high += val * 8 * (held ? 5 : 1);
+    ApplyCvCal();
+    stateManager.markMetadataDirty();
+    break;
+  case PARAM_MAIN_CV2_CAL_LO:
+    app.cv2_cal_low += val * 8 * (held ? 5 : 1);
+    ApplyCvCal();
+    stateManager.markMetadataDirty();
+    break;
+  case PARAM_MAIN_CV2_CAL_ZERO:
+    app.cv2_cal_offset += val * 8 * (held ? 5 : 1);
+    ApplyCvCal();
+    stateManager.markMetadataDirty();
+    break;
+  case PARAM_MAIN_CV2_CAL_HI:
+    app.cv2_cal_high += val * 8 * (held ? 5 : 1);
+    ApplyCvCal();
+    stateManager.markMetadataDirty();
+    break;
   // Applied on encoder button press.
   case PARAM_MAIN_ENCODER_DIR:
   case PARAM_MAIN_ROTATE_DISP:
@@ -453,8 +480,21 @@ void updateSelection(byte &param, int change, int maxValue) {
 // App helper functions.
 //
 
+// Sane calibration bounds. The endpoints map raw ADC to ~+-512 units, so keep
+// them well-conditioned - otherwise the reading rails and the meter/knob look
+// dead. Also clamps any garbage loaded from an old EEPROM layout.
+static const int CAL_LOW_MIN = -1024, CAL_LOW_MAX = -100;
+static const int CAL_HIGH_MIN = 100, CAL_HIGH_MAX = 1024;
+static const int CAL_OFFSET_MAX = 1024;
+
 // Push the stored per-input CV calibration into the AnalogInput objects.
 void ApplyCvCal() {
+  app.cv1_cal_low = constrain(app.cv1_cal_low, CAL_LOW_MIN, CAL_LOW_MAX);
+  app.cv1_cal_high = constrain(app.cv1_cal_high, CAL_HIGH_MIN, CAL_HIGH_MAX);
+  app.cv1_cal_offset = constrain(app.cv1_cal_offset, -CAL_OFFSET_MAX, CAL_OFFSET_MAX);
+  app.cv2_cal_low = constrain(app.cv2_cal_low, CAL_LOW_MIN, CAL_LOW_MAX);
+  app.cv2_cal_high = constrain(app.cv2_cal_high, CAL_HIGH_MIN, CAL_HIGH_MAX);
+  app.cv2_cal_offset = constrain(app.cv2_cal_offset, -CAL_OFFSET_MAX, CAL_OFFSET_MAX);
   gravity.cv1.SetCalibrationLow(app.cv1_cal_low);
   gravity.cv1.SetCalibrationHigh(app.cv1_cal_high);
   gravity.cv1.AdjustOffset(app.cv1_cal_offset - gravity.cv1.GetOffset());

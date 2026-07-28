@@ -34,7 +34,8 @@ static_assert(sizeof(StateManager::EepromData) * 7 +
 // one static instead of one per function keeps RAM headroom for the stack.
 static StateManager::EepromData eeprom_io;
 
-StateManager::StateManager() : _lastChangeTime(0), _isDirty(false) {}
+StateManager::StateManager()
+    : _lastChangeTime(0), _isDirty(false), _isMetadataDirty(false) {}
 
 bool StateManager::initialize(AppState &app) {
   noInterrupts();
@@ -44,7 +45,6 @@ bool StateManager::initialize(AppState &app) {
     _loadState(app, TRANSIENT_SLOT);
     success = true;
   } else {
-    reset(app);
     factoryReset(app);
   }
   interrupts();
@@ -58,6 +58,7 @@ bool StateManager::loadData(AppState &app, byte slot_index) {
   _loadState(app, slot_index);
   app.selected_save_slot = slot_index;
   _isDirty = true;
+  _isMetadataDirty = true; // selected_save_slot lives in metadata
   interrupts();
   return true;
 }
@@ -71,6 +72,7 @@ void StateManager::saveData(const AppState &app) {
   _saveState(app, app.selected_save_slot);
   _saveMetadata(app);
   _isDirty = false;
+  _isMetadataDirty = false;
   interrupts();
 }
 
@@ -78,7 +80,12 @@ void StateManager::update(const AppState &app) {
   if (_isDirty && (millis() - _lastChangeTime > SAVE_DELAY_MS)) {
     noInterrupts();
     _saveState(app, TRANSIENT_SLOT);
-    _saveMetadata(app);
+    // Metadata (encoder/rotate/CV cal/slot) changes rarely, so only rewrite it
+    // when actually touched - avoids an extra ~50 B EEPROM write every save.
+    if (_isMetadataDirty) {
+      _saveMetadata(app);
+      _isMetadataDirty = false;
+    }
     _isDirty = false;
     interrupts();
   }
@@ -99,18 +106,29 @@ void StateManager::markDirty() {
   _lastChangeTime = millis();
 }
 
+void StateManager::markMetadataDirty() {
+  _isMetadataDirty = true;
+  markDirty();
+}
+
 void StateManager::factoryReset(AppState &app) {
   noInterrupts();
   for (unsigned int i = 0; i < EEPROM.length(); i++) {
     EEPROM.write(i, 0);
   }
+  // Put defaults into app FIRST, then persist them. (Do not _loadMetadata here -
+  // the EEPROM was just erased, so it would read back zeros/garbage.)
+  ResetAppState(app);
+  app.selected_save_slot = 0;
   _saveMetadata(app);
-  reset(app);
   for (uint8_t i = 0; i < MAX_SAVE_SLOTS; i++) {
     app.selected_save_slot = i;
     _saveState(app, i);
   }
+  app.selected_save_slot = 0;
   _saveState(app, TRANSIENT_SLOT);
+  _isDirty = false;
+  _isMetadataDirty = false;
   interrupts();
 }
 

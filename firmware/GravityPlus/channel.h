@@ -21,7 +21,7 @@
 #include "clock_mod.h"
 #include "digital_output.h"
 
-static constexpr uint8_t MAX_PATTERN_STEPS = 32; // pattern bitmap is a uint32_t
+static constexpr uint8_t MAX_PATTERN_STEPS = 16; // pattern bitmap fits a uint16_t
 
 // One enum for every channel-page item, in UI order: clock mod, the seven
 // pattern/gate params (STEPS..SWING, the ones stored per channel in base_/live_),
@@ -29,7 +29,7 @@ static constexpr uint8_t MAX_PATTERN_STEPS = 32; // pattern bitmap is a uint32_t
 // array index and the UI / CV item index alike.
 enum ChannelPageParam : uint8_t {
   CP_CLOCK_MOD,
-  CP_STEPS,  // euclidean pattern length         (1..32)
+  CP_STEPS,  // euclidean pattern length         (1..16)
   CP_HITS,   // active hits spread over the steps (1..steps)
   CP_ROTATE, // cyclic shift of the pattern       (0..steps-1)
   CP_PROB,   // per-hit trigger probability       (0..100 %)
@@ -41,7 +41,7 @@ enum ChannelPageParam : uint8_t {
   CP_CV1B,
   CP_CV2A,
   CP_CV2B,
-  CHANNEL_PAGE_PARAM_COUNT,
+  CP_PARAM_COUNT,
 };
 
 // The stored gate params are the contiguous block CP_STEPS..CP_SWING.
@@ -129,21 +129,26 @@ public:
     }
   }
 
-  int getBase(uint8_t i) const { return base_[i]; }
-  int getLive(uint8_t i) const { return live_[i]; }
+  // Gate params are all <= 100, so int8_t is plenty.
+  uint8_t getBase(uint8_t i) const { return base_[i]; }
+  uint8_t getLive(uint8_t i) const { return live_[i]; }
   // Value to show for param i: the modulated value when a CV drives it (and not
   // editing), otherwise the base value.
-  int paramValue(uint8_t i, bool withCvMod) const {
+  uint8_t paramValue(uint8_t i, bool withCvMod) const {
     return (withCvMod && targetsParam(i)) ? live_[i] : base_[i];
   }
 
   void editParam(uint8_t i, int delta) {
     base_[i] = clampParam(i, base_[i] + delta, base_[CP_STEPS]);
     if (i == CP_STEPS) {
-      if (base_[CP_HITS] > base_[CP_STEPS])
-        base_[CP_HITS] = base_[CP_STEPS];
-      if (base_[CP_ROTATE] > base_[CP_STEPS] - 1)
-        base_[CP_ROTATE] = base_[CP_STEPS] - 1;
+      // STEPS also bounds HITS and ROTATE - clamp them and sync their live
+      // copies too, else a shrink-then-grow leaves live_ stale (e.g. HITS).
+      base_[CP_HITS] = base_[CP_HITS] > base_[CP_STEPS] ? base_[CP_STEPS] : base_[CP_HITS];
+      base_[CP_ROTATE] = base_[CP_ROTATE] > base_[CP_STEPS] - 1 ? base_[CP_STEPS] - 1 : base_[CP_ROTATE];
+      if (!targetsParam(CP_HITS))
+        live_[CP_HITS] = base_[CP_HITS];
+      if (!targetsParam(CP_ROTATE))
+        live_[CP_ROTATE] = base_[CP_ROTATE];
     }
     if (!targetsParam(i))
       live_[i] = base_[i];
@@ -171,7 +176,7 @@ public:
   void setCvDest(uint8_t s, CvTarget t) { cvdest_[s] = t; }
   CvTarget getCvDest(uint8_t s) const { return cvdest_[s]; }
   void setCvAmount(uint8_t s, int a) { cvamt_[s] = (int8_t)constrain(a, -100, 100); }
-  int getCvAmount(uint8_t s) const { return cvamt_[s]; }
+  int8_t getCvAmount(uint8_t s) const { return cvamt_[s]; }
   bool isCvActive() const {
     for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
       if (cvdest_[s] != CV_NONE)
@@ -192,24 +197,26 @@ public:
 
   // --- Pattern view (for the UI) ---
   uint8_t patternSteps() const { return live_[CP_STEPS]; }
-  bool patternHit(uint8_t i) const { return (pattern_ & (1UL << i)) != 0; }
+  bool patternHit(uint8_t i) const { return (pattern_ & (1U << i)) != 0; }
 
   /**
    * @brief Apply CV modulation. Called from the main loop when a CV is routed.
    * Rebuilds the live clock-mod index and each modulated parameter from base +
    * CV, then recomputes derived state.
    */
-  void applyCvMod(int cv1_val, int cv2_val) {
-    // Per-slot input reading: slots 0/1 = CV1, slots 2/3 = CV2. A slot's
-    // contribution to its destination is reading * amount / 512 (so amount is
-    // the offset applied at full +5V; a negative amount inverts).
-    const int in[CVMOD_SLOTS] = {cv1_val, cv1_val, cv2_val, cv2_val};
+  // cv1_val/cv2_val are the reduced CV readings (-127..127, i.e. Read() >> 2).
+  // A slot's contribution is reading * amount / 128 (amount = offset at full CV;
+  // negative inverts). Kept to int8 so reading * amount fits a 16-bit int.
+  void applyCvMod(int8_t cv1_val, int8_t cv2_val) {
+    // Per-slot input: slots 0/1 = CV1, slots 2/3 = CV2.
+    const int8_t in[CVMOD_SLOTS] = {cv1_val, cv1_val, cv2_val, cv2_val};
 
-    // Clock mod.
+    // Clock mod. Scaled to +-(MOD_CHOICE_SIZE/2) index steps, not the +-100 used
+    // for params (the index range is only ~25 wide).
     int mod = 0;
     for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
       if (cvdest_[s] == CV_CLOCK_MOD)
-        mod += in[s] * cvamt_[s] / 512;
+        mod += in[s] * cvamt_[s] / 128 * (MOD_CHOICE_SIZE / 2) / 100;
     live_clock_mod_ = constrain(base_clock_mod_ + mod, 0, MOD_CHOICE_SIZE - 1);
     refreshModPulses();
 
@@ -221,7 +228,7 @@ public:
       int amt = 0;
       for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
         if (cvdest_[s] == t)
-          amt += in[s] * cvamt_[s] / 512;
+          amt += in[s] * cvamt_[s] / 128;
       if (amt != 0)
         live_[i] = clampParam(i, base_[i] + amt, live_[CP_STEPS]);
     }
@@ -291,6 +298,7 @@ public:
     for (uint8_t i = GATE_FIRST; i <= GATE_LAST; i++)
       p[GATE_BASE + (i - GATE_FIRST)] = base_[i];
   }
+
   void load(const byte *p) {
     base_clock_mod_ = constrain((int)p[0], 0, MOD_CHOICE_SIZE - 1);
     mute_ = (p[1] & 0x01) != 0;
@@ -311,7 +319,7 @@ public:
 
 private:
   // Clamp a raw value to param i's range. HITS is bounded by `steps`.
-  static int clampParam(uint8_t i, int v, int steps) {
+  static int clampParam(uint8_t i, int v, int8_t steps) {
     switch (i) {
     case CP_STEPS: return constrain(v, 1, MAX_PATTERN_STEPS);
     case CP_HITS: return constrain(v, 1, steps);
@@ -348,7 +356,7 @@ private:
   // Advance one euclidean step, returning whether the step we left was a hit.
   bool nextStep() {
     const uint8_t steps = live_[CP_STEPS];
-    const bool hit = (pattern_ & (1UL << step_)) != 0;
+    const bool hit = (pattern_ & (1U << step_)) != 0;
     step_ = (step_ < steps - 1) ? step_ + 1 : 0;
     return hit;
   }
@@ -358,25 +366,23 @@ private:
   void finalize() {
     // Bresenham euclidean pattern into the bitmap (step 0 always a hit).
     const uint8_t steps = live_[CP_STEPS];
-    pattern_ = 1UL;
+    pattern_ = 1U;
     uint8_t bucket = 0;
     for (uint8_t i = 1; i < steps; i++) {
       bucket += live_[CP_HITS];
       if (bucket >= steps) {
         bucket -= steps;
-        pattern_ |= (1UL << i);
+        pattern_ |= (1U << i);
       }
     }
     // Cyclic rotation: a hit at base index j moves to (j + rotate) % steps.
     if (live_[CP_ROTATE]) {
-      uint32_t rotated = 0;
+      uint16_t rotated = 0;
       for (uint8_t i = 0; i < steps; i++)
-        if (pattern_ & (1UL << ((i + steps - live_[CP_ROTATE]) % steps)))
-          rotated |= (1UL << i);
+        if (pattern_ & (1U << ((i + steps - live_[CP_ROTATE]) % steps)))
+          rotated |= (1U << i);
       pattern_ = rotated;
     }
-    if (step_ >= steps)
-      step_ = 0;
 
     // Gate edge phases. The gate opens `offset` into the step and closes after
     // `duty` of the step; swing pushes both later on odd steps. Precomputing
@@ -385,9 +391,8 @@ private:
         max((int32_t)(mod_pulses_ * (100 - live_[CP_DUTY]) / 100), (int32_t)1);
     const uint16_t offset_pulses =
         (uint16_t)(mod_pulses_ * (100 - live_[CP_OFFSET]) / 100);
-    const uint8_t swing = live_[CP_SWING];
     swing_pulses_ =
-        (swing > 50) ? (uint16_t)(mod_pulses_ * (100 - (swing - 50)) / 100) : 0;
+        (live_[CP_SWING] > 50) ? (uint16_t)(mod_pulses_ * (100 - (live_[CP_SWING] - 50)) / 100) : 0;
 
     high_phase_ = (uint16_t)((mod_pulses_ - (offset_pulses % mod_pulses_)) % mod_pulses_);
     high_phase_sw_ = (uint16_t)((mod_pulses_ - ((offset_pulses + swing_pulses_) % mod_pulses_)) % mod_pulses_);
@@ -405,7 +410,7 @@ private:
   int8_t cvamt_[CVMOD_SLOTS];
 
   // Playback / pattern state.
-  uint32_t pattern_; // euclidean hit bitmap
+  uint16_t pattern_; // euclidean hit bitmap (<= 16 steps)
 
   // Precomputed gate edge phases ("_sw" = the swung, odd-step variant).
   uint16_t high_phase_, high_phase_sw_;
@@ -413,16 +418,15 @@ private:
   uint16_t swing_pulses_;
 
   // Per-channel clock-mod phase counter (avoids 32-bit tick % / divide).
-  uint16_t phase_;
   uint32_t last_tick_;
+  uint16_t phase_;
   uint16_t beat_;
   uint16_t last_mod_;
   uint16_t mod_pulses_; // cached clockModPulses(live_clock_mod_)
 
   uint8_t step_;     // current step index
-
-  bool mute_;
   uint8_t choke_; // 0 = off, else 1-based source channel that silences this one
+  bool mute_;
 };
 
 #endif // GRAVITYPLUS_CHANNEL_H

@@ -171,7 +171,7 @@ void drawRightAlignedText(const char *text, int y) {
 
 void drawMainSelection() {
   gravity.display.setDrawColor(1);
-  const int offsetY = 5;
+  const int offsetY = 6;
   const int tickSize = 3;
   const int mainWidth = SCREEN_WIDTH / 2;
   const int mainHeight = 46;
@@ -185,6 +185,25 @@ void drawMainSelection() {
                            mainHeight);
   gravity.display.drawLine(0, mainHeight, tickSize, mainHeight);
   gravity.display.drawLine(0, mainHeight, 0, mainHeight - tickSize);
+  gravity.display.setDrawColor(2);
+}
+
+// Draw the channel's euclidean pattern along the top: 4 px per step, filled
+// box for a hit, empty for a rest, centered on the step count.
+void drawChannelPattern(const Channel &ch) {
+  const uint8_t sz = 5; // px per step
+  uint8_t steps = ch.patternSteps();
+  int x0 = (SCREEN_WIDTH - steps * sz) / 2; // centered on the step count
+  const int w = steps * sz;
+  gravity.display.setDrawColor(1);
+  // Grid: top/bottom rails + a vertical divider at every step boundary, so each
+  // step (hit or rest) reads as the same-width cell.
+  gravity.display.drawHLine(x0, sz - 1, w);
+  for (uint8_t i = 0; i <= steps; ++i) {
+    gravity.display.drawVLine(x0 + i * sz, 0, sz);
+    if (i < steps && ch.patternHit(i))
+      gravity.display.drawBox(x0 + i * sz, 0, sz, sz);
+  }
   gravity.display.setDrawColor(2);
 }
 
@@ -419,24 +438,6 @@ const __FlashStringHelper *cvTargetLabel(CvTarget t) {
   }
 }
 
-// Per-channel page: clock mod, the six gate params, then the two CV targets.
-// Draw the channel's euclidean pattern along the top: 3x3 px per step, filled
-// box for a hit, frame for a rest, centered on the step count.
-void drawChannelPattern(const Channel &ch) {
-  const uint8_t step_box_size = 4;
-  uint8_t steps = ch.patternSteps();
-  int x0 = (SCREEN_WIDTH - steps * step_box_size) / 2;
-  gravity.display.setDrawColor(1);
-  for (uint8_t i = 0; i < steps; ++i) {
-    int x = x0 + i * step_box_size;
-    if (ch.patternHit(i))
-      gravity.display.drawBox(x, 0, step_box_size, step_box_size);
-    else
-      gravity.display.drawFrame(x, 0, step_box_size, step_box_size);
-  }
-  gravity.display.setDrawColor(2);
-}
-
 void DisplayChannelPage() {
   auto &ch = GetSelectedChannel();
 
@@ -465,6 +466,10 @@ void DisplayChannelPage() {
     }
   } else if (pageParamIsGate(param)) {
     itoa(ch.paramValue(param, withCvMod), g_main, 10);
+    // Percentage params get a '%' suffix.
+    if (param == CP_PROB || param == CP_DUTY || param == CP_OFFSET ||
+        param == CP_SWING)
+      strcat(g_main, "%");
     copyP(g_sub, sizeof(g_sub), Channel::paramLabel(param));
   } else if (param == CP_CHOKE) {
     uint8_t src = ch.getChoke();
@@ -478,10 +483,11 @@ void DisplayChannelPage() {
     uint8_t slot = param - CP_CV1A;
     CvTarget dest = ch.getCvDest(slot);
     if (dest == CV_NONE) {
-      copyP(g_main, sizeof(g_main), F("--"));
+      copyP(g_main, sizeof(g_main), F("X"));
       copyP(g_sub, sizeof(g_sub), F("NONE"));
     } else {
       itoa(ch.getCvAmount(slot), g_main, 10);
+      strcat(g_main, "%"); // amount is a depth percentage
       copyP(g_sub, sizeof(g_sub), cvTargetLabel(dest));
     }
   }
@@ -490,10 +496,10 @@ void DisplayChannelPage() {
   drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
   // Labels come from Channel::paramLabel (single source), indexed by ChannelPageParam.
-  const __FlashStringHelper *menu_items_channel[CHANNEL_PAGE_PARAM_COUNT];
-  for (uint8_t i = 0; i < CHANNEL_PAGE_PARAM_COUNT; ++i)
+  const __FlashStringHelper *menu_items_channel[CP_PARAM_COUNT];
+  for (uint8_t i = 0; i < CP_PARAM_COUNT; ++i)
     menu_items_channel[i] = Channel::paramLabel(i);
-  drawMenuItems(menu_items_channel, CHANNEL_PAGE_PARAM_COUNT);
+  drawMenuItems(menu_items_channel, CP_PARAM_COUNT);
 }
 
 void DisplaySelectedChannel() {

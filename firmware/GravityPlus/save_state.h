@@ -30,6 +30,7 @@ public:
   void reset(AppState &app);
   void update(const AppState &app);
   void markDirty();
+  void markMetadataDirty(); // metadata changed (encoder/rotate/CV cal/slot)
   void factoryReset(AppState &app);
 
   struct Metadata {
@@ -66,6 +67,7 @@ private:
 
   unsigned long _lastChangeTime;
   bool _isDirty;
+  bool _isMetadataDirty;
 };
 
 #endif // SAVE_STATE_H

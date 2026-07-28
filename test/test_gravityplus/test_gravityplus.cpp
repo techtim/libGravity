@@ -145,8 +145,8 @@ void test_cv_param_targeting(void) {
 
   ch.setCvDest(0, CV_STEPS); // slot CV1-A -> STEPS
   ch.setCvAmount(0, 100);
-  ch.applyCvMod(512, 0); // steps 4 + 512*100/512 = 104 -> clamp 32
-  TEST_ASSERT_EQUAL_INT(32, ch.paramValue(CP_STEPS, true)); // routed -> live
+  ch.applyCvMod(127, 0); // steps 4 + 127*100/128 = 103 -> clamp MAX_PATTERN_STEPS
+  TEST_ASSERT_EQUAL_INT(16, ch.paramValue(CP_STEPS, true)); // routed -> live
   TEST_ASSERT_EQUAL_INT(4, ch.paramValue(CP_STEPS, false)); // base unchanged
   TEST_ASSERT_EQUAL_INT(ch.paramValue(CP_PROB, false),
                         ch.paramValue(CP_PROB, true)); // others untouched
@@ -208,6 +208,22 @@ void test_pattern_rotate(void) {
     TEST_ASSERT_EQUAL(r2[i], ch.patternHit(i));
 }
 
+// Shrinking STEPS clamps HITS; growing STEPS back must NOT resurrect the old
+// hit count (live_ must track base_). E(6,6) -> steps 1 -> steps 6 = E(6,1).
+void test_steps_shrink_grow_keeps_hits(void) {
+  Channel ch;
+  ch.editParam(CP_STEPS, 5); // 1 -> 6
+  ch.editParam(CP_HITS, 5);  // 1 -> 6  (E(6,6), all hits)
+  ch.editParam(CP_STEPS, -5); // 6 -> 1, hits clamps to 1
+  ch.editParam(CP_STEPS, 5);  // 1 -> 6, hits stays 1
+  TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_HITS, false));
+  uint8_t hits = 0;
+  for (uint8_t i = 0; i < 6; i++)
+    if (ch.patternHit(i))
+      hits++;
+  TEST_ASSERT_EQUAL_INT(1, hits); // E(6,1) = single hit
+}
+
 // The choke rule that HandleIntClockTick applies: a channel whose choke source's
 // gate is high is forced low. Replicated here over two DigitalOutputs.
 void test_choke_silences_when_source_on(void) {
@@ -245,6 +261,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_save_load_roundtrip);
   RUN_TEST(test_choke_field);
   RUN_TEST(test_pattern_rotate);
+  RUN_TEST(test_steps_shrink_grow_keeps_hits);
   RUN_TEST(test_choke_silences_when_source_on);
   return UNITY_END();
 }
