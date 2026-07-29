@@ -149,6 +149,28 @@ enum ParamsMainPage : uint8_t {
 static char g_main[16];
 static char g_sub[20];
 
+// Append a single char to a C string (cheaper than strcat: no library symbol,
+// no string-literal operand).
+inline void appendChar(char *s, char c) {
+  while (*s)
+    s++;
+  *s++ = c;
+  *s = '\0';
+}
+
+// CV calibration menu label for item i (0..5). Single source, used by the main
+// menu and the calibration screen.
+inline const __FlashStringHelper *calLabel(uint8_t i) {
+  switch (i) {
+  case 0: return F("CV1 CAL -5V");
+  case 1: return F("CV1 CAL 0V");
+  case 2: return F("CV1 CAL +5V");
+  case 3: return F("CV2 CAL -5V");
+  case 4: return F("CV2 CAL 0V");
+  default: return F("CV2 CAL +5V");
+  }
+}
+
 // Copy a flash (PROGMEM) string into a RAM buffer for u8g2 text functions.
 inline void copyP(char *dst, size_t n, const __FlashStringHelper *f) {
   strncpy_P(dst, reinterpret_cast<PGM_P>(f), n - 1);
@@ -328,14 +350,8 @@ void DisplayMainPage() {
     bool is1 = app.selected_param <= PARAM_MAIN_CV1_CAL_HI;
     cv_meter_value = is1 ? gravity.cv1.Read() : gravity.cv2.Read();
     show_cv_meter = true; // tune against the live reading
-    switch (app.selected_param) {
-    case PARAM_MAIN_CV1_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL -5V")); break;
-    case PARAM_MAIN_CV1_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL 0V")); break;
-    case PARAM_MAIN_CV1_CAL_HI: copyP(g_sub, sizeof(g_sub), F("CV1 CAL +5V")); break;
-    case PARAM_MAIN_CV2_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL -5V")); break;
-    case PARAM_MAIN_CV2_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL 0V")); break;
-    default: copyP(g_sub, sizeof(g_sub), F("CV2 CAL +5V")); break;
-    }
+    copyP(g_sub, sizeof(g_sub),
+          calLabel(app.selected_param - PARAM_MAIN_CV1_CAL_LO));
     break;
   }
   case PARAM_MAIN_SOURCE:
@@ -424,8 +440,8 @@ void DisplayMainPage() {
       F("SOURCE"),      F("PULSE OUT"),   F("ENCODER DIR"),
       F("ROTATE DISP"), F("SAVE"),        F("LOAD"),
       F("RESET"),
-      F("CV1 CAL -5V"), F("CV1 CAL 0V"),  F("CV1 CAL +5V"),
-      F("CV2 CAL -5V"), F("CV2 CAL 0V"),  F("CV2 CAL +5V"),
+      calLabel(0), calLabel(1), calLabel(2),
+      calLabel(3), calLabel(4), calLabel(5),
       F("ERASE")};
   drawMenuItems(menu_items, PARAM_MAIN_LAST);
 }
@@ -469,7 +485,7 @@ void DisplayChannelPage() {
     // Percentage params get a '%' suffix.
     if (param == CP_PROB || param == CP_DUTY || param == CP_OFFSET ||
         param == CP_SWING)
-      strcat(g_main, "%");
+      appendChar(g_main, '%');
     copyP(g_sub, sizeof(g_sub), Channel::paramLabel(param));
   } else if (param == CP_CHOKE) {
     uint8_t src = ch.getChoke();
@@ -486,8 +502,11 @@ void DisplayChannelPage() {
       copyP(g_main, sizeof(g_main), F("X"));
       copyP(g_sub, sizeof(g_sub), F("NONE"));
     } else {
+      if (ch.getCvAmount(slot) < 0) {
+        gravity.display.drawBox(0, 24, 4, 2); // '-' sign
+      }
       itoa(ch.getCvAmount(slot), g_main, 10);
-      strcat(g_main, "%"); // amount is a depth percentage
+      appendChar(g_main, '%'); // amount is a depth percentage
       copyP(g_sub, sizeof(g_sub), cvTargetLabel(dest));
     }
   }
@@ -560,7 +579,6 @@ void Bootsplash() {
     gravity.display.drawStr(16 + (textWidth / 2), 32,
                             StateManager::SEMANTIC_VERSION);
 
-    copyP(g_main, sizeof(g_main), F("LOADING...."));
     textWidth = gravity.display.getStrWidth(g_main);
     gravity.display.drawStr(26 + (textWidth / 2), 44, g_main);
   } while (gravity.display.nextPage());

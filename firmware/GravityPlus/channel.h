@@ -113,11 +113,11 @@ public:
   // of truth for the channel-page strings.
   static const __FlashStringHelper *paramLabel(uint8_t i) {
     switch (i) {
-    case CP_CLOCK_MOD: return F("CLOCK_MOD");
+    case CP_CLOCK_MOD: return F("CLOCK MOD");
     case CP_STEPS: return F("STEPS");
     case CP_HITS: return F("HITS");
     case CP_ROTATE: return F("ROTATE");
-    case CP_PROB: return F("PROB");
+    case CP_PROB: return F("PROBAB");
     case CP_DUTY: return F("DUTY");
     case CP_OFFSET: return F("OFFSET");
     case CP_SWING: return F("SWING");
@@ -129,9 +129,6 @@ public:
     }
   }
 
-  // Gate params are all <= 100, so int8_t is plenty.
-  uint8_t getBase(uint8_t i) const { return base_[i]; }
-  uint8_t getLive(uint8_t i) const { return live_[i]; }
   // Value to show for param i: the modulated value when a CV drives it (and not
   // editing), otherwise the base value.
   uint8_t paramValue(uint8_t i, bool withCvMod) const {
@@ -158,14 +155,14 @@ public:
   // --- Clock mod ---
   void setClockMod(int index) {
     base_clock_mod_ = constrain(index, 0, MOD_CHOICE_SIZE - 1);
-    if (!targetsClockMod()) {
+    if (!targetsParam(CV_CLOCK_MOD)) {
       live_clock_mod_ = base_clock_mod_;
       refreshModPulses();
       finalize();
     }
   }
   int getClockModIndex(bool withCvMod = false) const {
-    return (withCvMod && targetsClockMod()) ? live_clock_mod_ : base_clock_mod_;
+    return (withCvMod && targetsParam(CV_CLOCK_MOD)) ? live_clock_mod_ : base_clock_mod_;
   }
   int getClockMod(bool withCvMod = false) const {
     return clockModValue(getClockModIndex(withCvMod));
@@ -223,14 +220,16 @@ public:
     // Parameters: start from base, then add each routed slot. STEPS is resolved
     // first so HITS can clamp to the modulated step count.
     syncLive();
-    for (uint8_t i = GATE_FIRST; i <= GATE_LAST; i++) {
-      CvTarget t = (CvTarget)(CV_STEPS + (i - GATE_FIRST));
+    for (uint8_t i = GATE_FIRST; i <= GATE_LAST; ++i) {
+      CvTarget t = (CvTarget)(i + 1); // CV_NONE == 0
       int amt = 0;
-      for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
+      for (uint8_t s = 0; s < CVMOD_SLOTS; ++s) {
         if (cvdest_[s] == t)
-          amt += in[s] * cvamt_[s] / 128;
-      if (amt != 0)
+          amt += (static_cast<int>(in[s]) * cvamt_[s]) / 128;
+      }
+      if (amt != 0) {
         live_[i] = clampParam(i, base_[i] + amt, live_[CP_STEPS]);
+      }
     }
     finalize();
   }
@@ -331,16 +330,9 @@ private:
     }
   }
 
-  bool targetsClockMod() const {
-    for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
-      if (cvdest_[s] == CV_CLOCK_MOD)
-        return true;
-    return false;
-  }
   bool targetsParam(uint8_t i) const {
-    CvTarget t = (CvTarget)(CV_STEPS + (i - GATE_FIRST));
-    for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
-      if (cvdest_[s] == t)
+    for (uint8_t s = 0; s < CVMOD_SLOTS; ++s)
+      if (cvdest_[s] == (CvTarget)(i+1))
         return true;
     return false;
   }

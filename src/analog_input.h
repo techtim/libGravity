@@ -13,15 +13,15 @@
 
 // Named ADC_MAX_INPUT rather than MAX_INPUT to avoid colliding with the POSIX
 // <sys/syslimits.h> MAX_INPUT macro when compiled on a host (e.g. unit tests).
-const int ADC_MAX_INPUT = (1 << 10) - 1; // Max 10 bit analog read resolution.
+static constexpr int ADC_MAX_INPUT = (1 << 10) - 1; // Max 10 bit analog read resolution.
 
 // estimated default calibration value
-const int CALIBRATED_LOW = -566;
-const int CALIBRATED_HIGH = 512;
+static constexpr int CALIBRATED_LOW = -566;
+static constexpr int CALIBRATED_HIGH = 512;
 
 class AnalogInput {
 public:
-  static const int GATE_THRESHOLD = 0;
+  static constexpr int GATE_THRESHOLD = 0;
 
   AnalogInput() {}
   ~AnalogInput() {}

@@ -40,17 +40,18 @@ public:
     byte selected_save_slot;
     bool encoder_reversed;
     bool rotate_display;
-    int cv1_cal_low, cv1_cal_high, cv1_cal_offset;
-    int cv2_cal_low, cv2_cal_high, cv2_cal_offset;
+    // Global performance settings - kept here (not per save slot) so the
+    // frequent transient EepromData save stays small.
+    byte selected_source;
+    byte selected_pulse;
+    byte cv_run;
+    byte cv_reset;
+    int cv_cal[6];
   };
   struct EepromData {
     int tempo;
     byte selected_param;
     byte selected_channel;
-    byte selected_source;
-    byte selected_pulse;
-    byte cv_run;
-    byte cv_reset;
     byte channel_data[Gravity::OUTPUT_COUNT][Channel::SAVE_BYTES];
   };
 

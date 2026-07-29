@@ -135,7 +135,7 @@ void StateManager::factoryReset(AppState &app) {
 // Bump on ANY change to the persisted layout that keeps the struct sizes the
 // same - e.g. reordering the gate params. Size changes are caught automatically
 // below; order-only changes are not, so they need this.
-static const uint16_t LAYOUT_REVISION = 3;
+static const uint16_t LAYOUT_REVISION = 5;
 
 // Layout signature: struct sizes + the manual revision. A mismatch forces a
 // one-time factory reset even when the version string is reused.
@@ -162,10 +162,6 @@ void StateManager::_saveState(const AppState &app, byte slot_index) {
   save_data.tempo = app.tempo;
   save_data.selected_param = app.selected_param;
   save_data.selected_channel = app.selected_channel;
-  save_data.selected_source = static_cast<byte>(app.selected_source);
-  save_data.selected_pulse = static_cast<byte>(app.selected_pulse);
-  save_data.cv_run = app.cv_run;
-  save_data.cv_reset = app.cv_reset;
 
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].save(save_data.channel_data[i]);
@@ -186,10 +182,6 @@ void StateManager::_loadState(AppState &app, byte slot_index) {
   app.tempo = load_data.tempo;
   app.selected_param = load_data.selected_param;
   app.selected_channel = load_data.selected_channel;
-  app.selected_source = static_cast<Clock::Source>(load_data.selected_source);
-  app.selected_pulse = static_cast<Clock::Pulse>(load_data.selected_pulse);
-  app.cv_run = load_data.cv_run;
-  app.cv_reset = load_data.cv_reset;
   // Defensive: never boot onto a non-existent channel page.
   if (app.selected_channel > Gravity::OUTPUT_COUNT)
     app.selected_channel = 0;
@@ -207,12 +199,12 @@ void StateManager::_saveMetadata(const AppState &app) {
   current_meta.selected_save_slot = app.selected_save_slot;
   current_meta.encoder_reversed = app.encoder_reversed;
   current_meta.rotate_display = app.rotate_display;
-  current_meta.cv1_cal_low = app.cv1_cal_low;
-  current_meta.cv1_cal_high = app.cv1_cal_high;
-  current_meta.cv1_cal_offset = app.cv1_cal_offset;
-  current_meta.cv2_cal_low = app.cv2_cal_low;
-  current_meta.cv2_cal_high = app.cv2_cal_high;
-  current_meta.cv2_cal_offset = app.cv2_cal_offset;
+  current_meta.selected_source = static_cast<byte>(app.selected_source);
+  current_meta.selected_pulse = static_cast<byte>(app.selected_pulse);
+  current_meta.cv_run = app.cv_run;
+  current_meta.cv_reset = app.cv_reset;
+  for (uint8_t i = 0; i < 6; i++)
+    current_meta.cv_cal[i] = app.cv_cal[i];
   EEPROM.put(METADATA_START_ADDR, current_meta);
 }
 
@@ -222,10 +214,10 @@ void StateManager::_loadMetadata(AppState &app) {
   app.selected_save_slot = metadata.selected_save_slot;
   app.encoder_reversed = metadata.encoder_reversed;
   app.rotate_display = metadata.rotate_display;
-  app.cv1_cal_low = metadata.cv1_cal_low;
-  app.cv1_cal_high = metadata.cv1_cal_high;
-  app.cv1_cal_offset = metadata.cv1_cal_offset;
-  app.cv2_cal_low = metadata.cv2_cal_low;
-  app.cv2_cal_high = metadata.cv2_cal_high;
-  app.cv2_cal_offset = metadata.cv2_cal_offset;
+  app.selected_source = static_cast<Clock::Source>(metadata.selected_source);
+  app.selected_pulse = static_cast<Clock::Pulse>(metadata.selected_pulse);
+  app.cv_run = metadata.cv_run;
+  app.cv_reset = metadata.cv_reset;
+  for (uint8_t i = 0; i < 6; i++)
+    app.cv_cal[i] = metadata.cv_cal[i];
 }
