@@ -149,6 +149,28 @@ enum ParamsMainPage : uint8_t {
 static char g_main[16];
 static char g_sub[20];
 
+// Append a single char to a C string (cheaper than strcat: no library symbol,
+// no string-literal operand).
+inline void appendChar(char *s, char c) {
+  while (*s)
+    s++;
+  *s++ = c;
+  *s = '\0';
+}
+
+// CV calibration menu label for item i (0..5). Single source, used by the main
+// menu and the calibration screen.
+inline const __FlashStringHelper *calLabel(uint8_t i) {
+  switch (i) {
+  case 0: return F("CV1 CAL -5V");
+  case 1: return F("CV1 CAL 0V");
+  case 2: return F("CV1 CAL +5V");
+  case 3: return F("CV2 CAL -5V");
+  case 4: return F("CV2 CAL 0V");
+  default: return F("CV2 CAL +5V");
+  }
+}
+
 // Copy a flash (PROGMEM) string into a RAM buffer for u8g2 text functions.
 inline void copyP(char *dst, size_t n, const __FlashStringHelper *f) {
   strncpy_P(dst, reinterpret_cast<PGM_P>(f), n - 1);
@@ -171,7 +193,7 @@ void drawRightAlignedText(const char *text, int y) {
 
 void drawMainSelection() {
   gravity.display.setDrawColor(1);
-  const int offsetY = 5;
+  const int offsetY = 6;
   const int tickSize = 3;
   const int mainWidth = SCREEN_WIDTH / 2;
   const int mainHeight = 46;
@@ -185,6 +207,25 @@ void drawMainSelection() {
                            mainHeight);
   gravity.display.drawLine(0, mainHeight, tickSize, mainHeight);
   gravity.display.drawLine(0, mainHeight, 0, mainHeight - tickSize);
+  gravity.display.setDrawColor(2);
+}
+
+// Draw the channel's euclidean pattern along the top: 4 px per step, filled
+// box for a hit, empty for a rest, centered on the step count.
+void drawChannelPattern(const Channel &ch) {
+  const uint8_t sz = 5; // px per step
+  uint8_t steps = ch.patternSteps();
+  int x0 = (SCREEN_WIDTH - steps * sz) / 2; // centered on the step count
+  const int w = steps * sz;
+  gravity.display.setDrawColor(1);
+  // Grid: top/bottom rails + a vertical divider at every step boundary, so each
+  // step (hit or rest) reads as the same-width cell.
+  gravity.display.drawHLine(x0, sz - 1, w);
+  for (uint8_t i = 0; i <= steps; ++i) {
+    gravity.display.drawVLine(x0 + i * sz, 0, sz);
+    if (i < steps && ch.patternHit(i))
+      gravity.display.drawBox(x0 + i * sz, 0, sz, sz);
+  }
   gravity.display.setDrawColor(2);
 }
 
@@ -309,14 +350,8 @@ void DisplayMainPage() {
     bool is1 = app.selected_param <= PARAM_MAIN_CV1_CAL_HI;
     cv_meter_value = is1 ? gravity.cv1.Read() : gravity.cv2.Read();
     show_cv_meter = true; // tune against the live reading
-    switch (app.selected_param) {
-    case PARAM_MAIN_CV1_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL -5V")); break;
-    case PARAM_MAIN_CV1_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV1 CAL 0V")); break;
-    case PARAM_MAIN_CV1_CAL_HI: copyP(g_sub, sizeof(g_sub), F("CV1 CAL +5V")); break;
-    case PARAM_MAIN_CV2_CAL_LO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL -5V")); break;
-    case PARAM_MAIN_CV2_CAL_ZERO: copyP(g_sub, sizeof(g_sub), F("CV2 CAL 0V")); break;
-    default: copyP(g_sub, sizeof(g_sub), F("CV2 CAL +5V")); break;
-    }
+    copyP(g_sub, sizeof(g_sub),
+          calLabel(app.selected_param - PARAM_MAIN_CV1_CAL_LO));
     break;
   }
   case PARAM_MAIN_SOURCE:
@@ -405,8 +440,8 @@ void DisplayMainPage() {
       F("SOURCE"),      F("PULSE OUT"),   F("ENCODER DIR"),
       F("ROTATE DISP"), F("SAVE"),        F("LOAD"),
       F("RESET"),
-      F("CV1 CAL -5V"), F("CV1 CAL 0V"),  F("CV1 CAL +5V"),
-      F("CV2 CAL -5V"), F("CV2 CAL 0V"),  F("CV2 CAL +5V"),
+      calLabel(0), calLabel(1), calLabel(2),
+      calLabel(3), calLabel(4), calLabel(5),
       F("ERASE")};
   drawMenuItems(menu_items, PARAM_MAIN_LAST);
 }
@@ -417,24 +452,6 @@ const __FlashStringHelper *cvTargetLabel(CvTarget t) {
   case CV_NONE: return F("NONE");
   default: return Channel::paramLabel(t - 1);
   }
-}
-
-// Per-channel page: clock mod, the six gate params, then the two CV targets.
-// Draw the channel's euclidean pattern along the top: 3x3 px per step, filled
-// box for a hit, frame for a rest, centered on the step count.
-void drawChannelPattern(const Channel &ch) {
-  const uint8_t step_box_size = 4;
-  uint8_t steps = ch.patternSteps();
-  int x0 = (SCREEN_WIDTH - steps * step_box_size) / 2;
-  gravity.display.setDrawColor(1);
-  for (uint8_t i = 0; i < steps; ++i) {
-    int x = x0 + i * step_box_size;
-    if (ch.patternHit(i))
-      gravity.display.drawBox(x, 0, step_box_size, step_box_size);
-    else
-      gravity.display.drawFrame(x, 0, step_box_size, step_box_size);
-  }
-  gravity.display.setDrawColor(2);
 }
 
 void DisplayChannelPage() {
@@ -465,6 +482,10 @@ void DisplayChannelPage() {
     }
   } else if (pageParamIsGate(param)) {
     itoa(ch.paramValue(param, withCvMod), g_main, 10);
+    // Percentage params get a '%' suffix.
+    if (param == CP_PROB || param == CP_DUTY || param == CP_OFFSET ||
+        param == CP_SWING)
+      appendChar(g_main, '%');
     copyP(g_sub, sizeof(g_sub), Channel::paramLabel(param));
   } else if (param == CP_CHOKE) {
     uint8_t src = ch.getChoke();
@@ -474,20 +495,30 @@ void DisplayChannelPage() {
       itoa(src, g_main, 10);
     copyP(g_sub, sizeof(g_sub), F("CHOKE BY"));
   } else {
-    bool is_cv1 = (param == CP_CV1);
-    copyP(g_main, sizeof(g_main), is_cv1 ? F("CV1") : F("CV2"));
-    copyP(g_sub, sizeof(g_sub),
-          cvTargetLabel(is_cv1 ? ch.getCv1Target() : ch.getCv2Target()));
+    // CV mod slot (CV1-A/B, CV2-A/B): big value = amount, sub = destination.
+    uint8_t slot = param - CP_CV1A;
+    CvTarget dest = ch.getCvDest(slot);
+    if (dest == CV_NONE) {
+      copyP(g_main, sizeof(g_main), F("X"));
+      copyP(g_sub, sizeof(g_sub), F("NONE"));
+    } else {
+      if (ch.getCvAmount(slot) < 0) {
+        gravity.display.drawBox(0, 24, 4, 2); // '-' sign
+      }
+      itoa(ch.getCvAmount(slot), g_main, 10);
+      appendChar(g_main, '%'); // amount is a depth percentage
+      copyP(g_sub, sizeof(g_sub), cvTargetLabel(dest));
+    }
   }
 
   drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
   drawCenteredText(g_sub, SUB_TEXT_Y, TEXT_FONT);
 
   // Labels come from Channel::paramLabel (single source), indexed by ChannelPageParam.
-  const __FlashStringHelper *menu_items_channel[CHANNEL_PAGE_PARAM_COUNT];
-  for (uint8_t i = 0; i < CHANNEL_PAGE_PARAM_COUNT; ++i)
+  const __FlashStringHelper *menu_items_channel[CP_PARAM_COUNT];
+  for (uint8_t i = 0; i < CP_PARAM_COUNT; ++i)
     menu_items_channel[i] = Channel::paramLabel(i);
-  drawMenuItems(menu_items_channel, CHANNEL_PAGE_PARAM_COUNT);
+  drawMenuItems(menu_items_channel, CP_PARAM_COUNT);
 }
 
 void DisplaySelectedChannel() {
@@ -508,8 +539,8 @@ void DisplaySelectedChannel() {
     gravity.display.setDrawColor(2);
     if (i == 0) {
       gravity.display.setBitmapMode(1);
-      auto icon = gravity.clock.IsPaused() ? pause_icon : play_icon;
-      gravity.display.drawXBMP(2, boxY, play_icon_width, play_icon_height, icon);
+      gravity.display.drawXBMP(2, boxY, play_icon_width, play_icon_height, 
+                              gravity.clock.IsPaused() ? pause_icon : play_icon );
     } else {
       gravity.display.setFont(TEXT_FONT);
       gravity.display.setCursor((i * boxWidth) + textOffset, SCREEN_HEIGHT - 3);
@@ -539,18 +570,24 @@ void Bootsplash() {
   gravity.display.firstPage();
   do {
     int textWidth;
+
+    gravity.display.setFont(LARGE_FONT);
+    copyP(g_main, sizeof(g_main), F("AV"));
+    gravity.display.drawStr(40, MAIN_TEXT_Y, g_main);
+    copyP(g_main, sizeof(g_main), F("IT"));
+    gravity.display.drawStr(74, MAIN_TEXT_Y, g_main);
     gravity.display.setFont(TEXT_FONT);
 
-    textWidth = gravity.display.getStrWidth(StateManager::SKETCH_NAME);
-    gravity.display.drawStr(4 + (textWidth / 2), 22, StateManager::SKETCH_NAME);
+    copyP(g_sub, sizeof(g_sub), F("GR"));
+    gravity.display.drawStr(28, MAIN_TEXT_Y - 8, g_sub);
+
+    copyP(g_sub, sizeof(g_sub), F("Y"));
+    gravity.display.drawStr(96, MAIN_TEXT_Y - 8, g_sub);
 
     textWidth = gravity.display.getStrWidth(StateManager::SEMANTIC_VERSION);
-    gravity.display.drawStr(16 + (textWidth / 2), 32,
+    gravity.display.drawStr(SCREEN_WIDTH / 2 - (textWidth / 2), 52,
                             StateManager::SEMANTIC_VERSION);
 
-    copyP(g_main, sizeof(g_main), F("LOADING...."));
-    textWidth = gravity.display.getStrWidth(g_main);
-    gravity.display.drawStr(26 + (textWidth / 2), 44, g_main);
   } while (gravity.display.nextPage());
 }
 

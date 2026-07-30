@@ -34,15 +34,13 @@ struct AppState {
   bool encoder_reversed = true;
   bool rotate_display = false;
   bool refresh_screen = true;
-  // Per-input ADC calibration (raw endpoints + zero offset). Applied to
-  // gravity.cvN in InitGravity so an electrical 0V reads 0.
-  int cv1_cal_low = CALIBRATED_LOW;
-  int cv1_cal_high = CALIBRATED_HIGH;
-  int cv1_cal_offset = 0;
-  int cv2_cal_low = CALIBRATED_LOW;
-  int cv2_cal_high = CALIBRATED_HIGH;
-  int cv2_cal_offset = 0;
+  // Per-input ADC calibration, in menu order: [CV1 low, CV1 offset, CV1 high,
+  // CV2 low, CV2 offset, CV2 high]. Applied to gravity.cvN in InitGravity.
+  int cv_cal[6] = {CALIBRATED_LOW, 0, CALIBRATED_HIGH,
+                   CALIBRATED_LOW, 0, CALIBRATED_HIGH};
 };
+// cv_cal[] layout: per input a low / offset / high triple.
+static const uint8_t CAL_PER_INPUT = 3;
 
 inline void ResetAppState(AppState &app) {
   app.tempo = Clock::DEFAULT_TEMPO;
@@ -53,15 +51,14 @@ inline void ResetAppState(AppState &app) {
   app.selected_pulse = Clock::PULSE_PPQN_24;
   app.cv_run = 0;
   app.cv_reset = CV_RESET_NONE;
-  app.encoder_reversed = true;
+  app.encoder_reversed = false;
   app.rotate_display = false;
   app.editing_param = false;
-  app.cv1_cal_low = CALIBRATED_LOW;
-  app.cv1_cal_high = CALIBRATED_HIGH;
-  app.cv1_cal_offset = 0;
-  app.cv2_cal_low = CALIBRATED_LOW;
-  app.cv2_cal_high = CALIBRATED_HIGH;
-  app.cv2_cal_offset = 0;
+  for (uint8_t i = 0; i < 6; i += CAL_PER_INPUT) {
+    app.cv_cal[i] = CALIBRATED_LOW;
+    app.cv_cal[i + 1] = 0;
+    app.cv_cal[i + 2] = CALIBRATED_HIGH;
+  }
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].Init();
   }
