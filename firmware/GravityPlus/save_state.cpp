@@ -11,7 +11,7 @@
 
 const char StateManager::SKETCH_NAME[] = "GRAVITY PLUS";
 // Bumped for per-channel choke + per-input CV calibration (one-time reset).
-const char StateManager::SEMANTIC_VERSION[] = "V1.0.3";
+const char StateManager::SEMANTIC_VERSION[] = "V3.1.0";
 
 // Reduced from 10 to 6 to fit the 4-slot CV routing (bigger per-channel record)
 // within the 1 KB EEPROM. Slots display as A1-A3 / B1-B3.
