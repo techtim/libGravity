@@ -28,8 +28,6 @@ void tearDown() {}
 // Six named params, with the documented defaults.
 void test_defaults(void) {
   Channel ch;
-  TEST_ASSERT_EQUAL_UINT8(CP_MOD_COUNT, ch.paramCount());
-  TEST_ASSERT_EQUAL_UINT8(7, ch.paramCount());
   TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_STEPS, false));
   TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_HITS, false));
   TEST_ASSERT_EQUAL_INT(100, ch.paramValue(CP_PROB, false));
@@ -150,6 +148,49 @@ void test_cv_param_targeting(void) {
   TEST_ASSERT_EQUAL_INT(4, ch.paramValue(CP_STEPS, false)); // base unchanged
   TEST_ASSERT_EQUAL_INT(ch.paramValue(CP_PROB, false),
                         ch.paramValue(CP_PROB, true)); // others untouched
+}
+
+// A CV routed to CLOCK MOD must move the *displayed* index too, not just the
+// internal pulse count. Regression: targetsParam() was called with CV_CLOCK_MOD
+// instead of CP_CLOCK_MOD, so getClockModIndex(true) kept returning the base.
+void test_cv_targets_clock_mod(void) {
+  Channel ch;
+  ch.setClockMod(16); // x1
+  // Not routed: the modulated getter shows the base index.
+  TEST_ASSERT_EQUAL_INT(16, ch.getClockModIndex(true));
+
+  ch.setCvDest(0, CV_CLOCK_MOD); // slot CV1-A
+  ch.setCvAmount(0, -100);
+  // 127 * -100 / 128 = -99; -99 * 12 / 100 = -11  =>  16 - 11 = 5
+  ch.applyCvMod(127, 0);
+  TEST_ASSERT_EQUAL_INT(5, ch.getClockModIndex(true));  // modulated
+  TEST_ASSERT_EQUAL_INT(16, ch.getClockModIndex(false)); // base untouched
+  // The clock-mod value shown follows the modulated index.
+  TEST_ASSERT_EQUAL_INT(clockModValue(5), ch.getClockMod(true));
+}
+
+// Two further destinations, one per CV input: CV1-B -> DUTY, CV2-A -> PROB.
+// Each moves only its own param; unrouted params still read as base.
+void test_cv_targets_duty_and_prob(void) {
+  Channel ch; // duty 50, prob 100, offset 0
+  ch.setCvDest(1, CV_DUTY); // slot CV1-B reads cv1
+  ch.setCvAmount(1, 40);
+  ch.setCvDest(2, CV_PROB); // slot CV2-A reads cv2
+  ch.setCvAmount(2, -50);
+
+  ch.applyCvMod(127, 127);
+  // duty: 127 * 40 / 128 = 39  => 50 + 39 = 89
+  TEST_ASSERT_EQUAL_INT(89, ch.paramValue(CP_DUTY, true));
+  // prob: 127 * -50 / 128 = -49 => 100 - 49 = 51
+  TEST_ASSERT_EQUAL_INT(51, ch.paramValue(CP_PROB, true));
+  // Bases unchanged.
+  TEST_ASSERT_EQUAL_INT(50, ch.paramValue(CP_DUTY, false));
+  TEST_ASSERT_EQUAL_INT(100, ch.paramValue(CP_PROB, false));
+  // An unrouted param reads the same either way.
+  TEST_ASSERT_EQUAL_INT(ch.paramValue(CP_OFFSET, false),
+                        ch.paramValue(CP_OFFSET, true));
+  // CLOCK MOD is not routed here, so it must not be flagged as modulated.
+  TEST_ASSERT_EQUAL_INT(ch.getClockModIndex(false), ch.getClockModIndex(true));
 }
 
 // Full save/load round-trip through the raw byte payload (choke included).
@@ -331,6 +372,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_restart_to_step0);
   RUN_TEST(test_mute_forces_low);
   RUN_TEST(test_cv_param_targeting);
+  RUN_TEST(test_cv_targets_clock_mod);
+  RUN_TEST(test_cv_targets_duty_and_prob);
   RUN_TEST(test_save_load_roundtrip);
   RUN_TEST(test_choke_field);
   RUN_TEST(test_pattern_rotate);

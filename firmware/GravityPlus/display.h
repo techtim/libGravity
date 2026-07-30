@@ -539,8 +539,8 @@ void DisplaySelectedChannel() {
     gravity.display.setDrawColor(2);
     if (i == 0) {
       gravity.display.setBitmapMode(1);
-      auto icon = gravity.clock.IsPaused() ? pause_icon : play_icon;
-      gravity.display.drawXBMP(2, boxY, play_icon_width, play_icon_height, icon);
+      gravity.display.drawXBMP(2, boxY, play_icon_width, play_icon_height, 
+                              gravity.clock.IsPaused() ? pause_icon : play_icon );
     } else {
       gravity.display.setFont(TEXT_FONT);
       gravity.display.setCursor((i * boxWidth) + textOffset, SCREEN_HEIGHT - 3);
@@ -570,17 +570,24 @@ void Bootsplash() {
   gravity.display.firstPage();
   do {
     int textWidth;
+
+    gravity.display.setFont(LARGE_FONT);
+    copyP(g_main, sizeof(g_main), F("AV"));
+    gravity.display.drawStr(40, MAIN_TEXT_Y, g_main);
+    copyP(g_main, sizeof(g_main), F("IT"));
+    gravity.display.drawStr(74, MAIN_TEXT_Y, g_main);
     gravity.display.setFont(TEXT_FONT);
 
-    textWidth = gravity.display.getStrWidth(StateManager::SKETCH_NAME);
-    gravity.display.drawStr(4 + (textWidth / 2), 22, StateManager::SKETCH_NAME);
+    copyP(g_sub, sizeof(g_sub), F("GR"));
+    gravity.display.drawStr(28, MAIN_TEXT_Y - 8, g_sub);
+
+    copyP(g_sub, sizeof(g_sub), F("Y"));
+    gravity.display.drawStr(96, MAIN_TEXT_Y - 8, g_sub);
 
     textWidth = gravity.display.getStrWidth(StateManager::SEMANTIC_VERSION);
-    gravity.display.drawStr(16 + (textWidth / 2), 32,
+    gravity.display.drawStr(SCREEN_WIDTH / 2 - (textWidth / 2), 52,
                             StateManager::SEMANTIC_VERSION);
 
-    textWidth = gravity.display.getStrWidth(g_main);
-    gravity.display.drawStr(26 + (textWidth / 2), 44, g_main);
   } while (gravity.display.nextPage());
 }
 

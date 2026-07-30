@@ -69,6 +69,10 @@ enum CvTarget : uint8_t {
 };
 static_assert(CV_STEPS + CP_MOD_COUNT == CV_TARGET_COUNT,
               "CvTarget param entries must match the gate params");
+// Channel::targetsParam() maps a ChannelPageParam to its CvTarget with cp + 1.
+static_assert(CP_CLOCK_MOD + 1 == CV_CLOCK_MOD && CP_STEPS + 1 == CV_STEPS &&
+                  CP_SWING + 1 == CV_SWING,
+              "CvTarget must be ChannelPageParam shifted by one (CV_NONE)");
 
 // A channel-page item that is a stored gate param (STEPS..SWING). These index
 // base_/live_ directly (see ChannelPageParam in channel.h).
@@ -129,7 +133,7 @@ public:
   // Value to show for param i: the modulated value when a CV drives it (and not
   // editing), otherwise the base value.
   uint8_t paramValue(uint8_t i, bool withCvMod) const {
-    return (withCvMod && targetsParam(i)) ? live_[i] : base_[i];
+    return (withCvMod && targetsParam((ChannelPageParam)i)) ? live_[i] : base_[i];
   }
 
   void editParam(uint8_t i, int delta) {
@@ -144,7 +148,7 @@ public:
       if (!targetsParam(CP_ROTATE))
         live_[CP_ROTATE] = base_[CP_ROTATE];
     }
-    if (!targetsParam(i))
+    if (!targetsParam((ChannelPageParam)i))
       live_[i] = base_[i];
     finalize();
   }
@@ -152,14 +156,14 @@ public:
   // --- Clock mod ---
   void setClockMod(int index) {
     base_clock_mod_ = constrain(index, 0, MOD_CHOICE_SIZE - 1);
-    if (!targetsParam(CV_CLOCK_MOD)) {
+    if (!targetsParam(CP_CLOCK_MOD)) {
       live_clock_mod_ = base_clock_mod_;
       refreshModPulses();
       finalize();
     }
   }
   int getClockModIndex(bool withCvMod = false) const {
-    return (withCvMod && targetsParam(CV_CLOCK_MOD)) ? live_clock_mod_ : base_clock_mod_;
+    return (withCvMod && targetsParam(CP_CLOCK_MOD)) ? live_clock_mod_ : base_clock_mod_;
   }
   int getClockMod(bool withCvMod = false) const {
     return clockModValue(getClockModIndex(withCvMod));
@@ -208,13 +212,14 @@ public:
     // Clock mod. Scaled to +-(MOD_CHOICE_SIZE/2) index steps, not the +-100 used
     // for params (the index range is only ~25 wide).
     int mod = 0;
-    for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
-      if (cvdest_[s] == CV_CLOCK_MOD)
+    for (uint8_t s = 0; s < CVMOD_SLOTS; s++) {
+      if (cvdest_[s] == CV_CLOCK_MOD) {
         mod += in[s] * cvamt_[s] / 128 * (MOD_CHOICE_SIZE / 2) / 100;
-    if (mod) {
-      live_clock_mod_ = constrain(base_clock_mod_ + mod, 0, MOD_CHOICE_SIZE - 1);
-      refreshModPulses();
+      }
     }
+
+    live_clock_mod_ = constrain(base_clock_mod_ + mod, 0, MOD_CHOICE_SIZE - 1);
+    refreshModPulses();
 
     // Parameters: start from base, then add each routed slot. STEPS is resolved
     // first so HITS can clamp to the modulated step count.
@@ -224,7 +229,7 @@ public:
       for (uint8_t s = 0; s < CVMOD_SLOTS; ++s) {
         if (cvdest_[s] == (CvTarget)(i + 1)) { // to map CP to CV skipping CV_NONE == 0
           amt += (cvdest_[s] == CV_STEPS || cvdest_[s] == CV_HITS || cvdest_[s] == CV_ROTATE)
-              ? (static_cast<int>(in[s] >> 3) * cvamt_[s]) / 100 + 1 // 100% * (127 >> 3 == 15) 
+              ? (static_cast<int>(in[s] >> 3) * cvamt_[s]) / 100 // 100% * (127 >> 3 == 15) 
               : (static_cast<int>(in[s]) * cvamt_[s]) / 128;
         }
       }
@@ -273,8 +278,7 @@ public:
 
     if (!output.On()) {
       if (phase_ == high_phase) {
-        const uint8_t prob = live_[CP_PROB];
-        if (nextStep() && (prob >= 100 || prob > (uint8_t)random(0, 100)))
+        if (nextStep() && (live_[CP_PROB] >= 100 || live_[CP_PROB] > (uint8_t)random(0, 100)))
           output.High();
       }
     }
@@ -331,9 +335,9 @@ private:
     }
   }
 
-  bool targetsParam(uint8_t i) const {
+  bool targetsParam(ChannelPageParam cp) const {
     for (uint8_t s = 0; s < CVMOD_SLOTS; ++s)
-      if (cvdest_[s] == (CvTarget)(i+1))
+      if (cvdest_[s] == (CvTarget)(cp + 1))
         return true;
     return false;
   }
@@ -380,18 +384,15 @@ private:
     // Gate edge phases. The gate opens `offset` into the step and closes after
     // `duty` of the step; swing pushes both later on odd steps. Precomputing
     // these makes process() a pair of phase compares (no 32-bit modulo).
-    const uint16_t duty_pulses =
-        max((int32_t)(mod_pulses_ * (100 - live_[CP_DUTY]) / 100), (int32_t)1);
-    const uint16_t offset_pulses =
-        (uint16_t)(mod_pulses_ * (100 - live_[CP_OFFSET]) / 100);
+    const uint16_t duty_pulses = max(static_cast<int32_t>(mod_pulses_) * (100 - live_[CP_DUTY]) / 100, 1);
+    const uint16_t offset_pulses = static_cast<int32_t>(mod_pulses_) * (100 - live_[CP_OFFSET]) / 100;
     swing_pulses_ =
-        (live_[CP_SWING] > 50) ? (uint16_t)(mod_pulses_ * (100 - (live_[CP_SWING] - 50)) / 100) : 0;
+        (live_[CP_SWING] > 50) ? static_cast<int32_t>(mod_pulses_) * (100 - (live_[CP_SWING] - 50)) / 100 : 0;
 
-    high_phase_ = (uint16_t)((mod_pulses_ - (offset_pulses % mod_pulses_)) % mod_pulses_);
-    high_phase_sw_ = (uint16_t)((mod_pulses_ - ((offset_pulses + swing_pulses_) % mod_pulses_)) % mod_pulses_);
-    low_phase_ = (uint16_t)((mod_pulses_ - ((duty_pulses + offset_pulses) % mod_pulses_)) % mod_pulses_);
-    low_phase_sw_ = (uint16_t)(
-        (mod_pulses_ - ((duty_pulses + offset_pulses + swing_pulses_) % mod_pulses_)) % mod_pulses_);
+    high_phase_ = mod_pulses_ - offset_pulses;
+    high_phase_sw_ = mod_pulses_ - ((offset_pulses + swing_pulses_) % mod_pulses_);
+    low_phase_ = mod_pulses_ - ((duty_pulses + offset_pulses) % mod_pulses_);
+    low_phase_sw_ = mod_pulses_ - ((duty_pulses + offset_pulses + swing_pulses_) % mod_pulses_);
   }
 
   // Parameters (indexed by ChannelPageParam; only the gate block is used).

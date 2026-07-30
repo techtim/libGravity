@@ -13,7 +13,7 @@
 static const byte MOD_CHOICE_SIZE = 25;
 
 // Negative numbers are multipliers, positive are divisors.
-static const int CLOCK_MOD[MOD_CHOICE_SIZE] PROGMEM = {
+static const int16_t CLOCK_MOD[MOD_CHOICE_SIZE] PROGMEM = {
     // Divisors
     128, 64, 32, 24, 16, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2,
     // Internal Clock Unity (quarter note)
@@ -22,7 +22,7 @@ static const int CLOCK_MOD[MOD_CHOICE_SIZE] PROGMEM = {
     -2, -3, -4, -6, -8, -12, -16, -24};
 
 // Number of 96 PPQN clock pulses that match the div/mult mods above.
-static const int CLOCK_MOD_PULSES[MOD_CHOICE_SIZE] PROGMEM = {
+static const uint16_t CLOCK_MOD_PULSES[MOD_CHOICE_SIZE] PROGMEM = {
     // Divisor Pulses (96 * X)
     12288, 6144, 3072, 2304, 1536, 1152, 1056, 960, 864, 768, 672, 576, 480,
     384, 288, 192,
