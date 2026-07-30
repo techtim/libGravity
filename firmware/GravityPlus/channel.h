@@ -45,9 +45,9 @@ enum ChannelPageParam : uint8_t {
 };
 
 // The stored gate params are the contiguous block CP_STEPS..CP_SWING.
-static constexpr uint8_t GATE_FIRST = CP_STEPS;
-static constexpr uint8_t GATE_LAST = CP_SWING;
-static constexpr uint8_t GATE_COUNT = GATE_LAST - GATE_FIRST + 1;
+static constexpr uint8_t CP_MOD_FIRST = CP_STEPS;
+static constexpr uint8_t CP_MOD_LAST = CP_SWING;
+static constexpr uint8_t CP_MOD_COUNT = CP_MOD_LAST - CP_MOD_FIRST + 1;
 
 // Four CV modulation slots per channel: CV1-A, CV1-B (both read CV1) and
 // CV2-A, CV2-B (both read CV2). Each has a destination + signed amount.
@@ -67,7 +67,7 @@ enum CvTarget : uint8_t {
   CV_SWING,
   CV_TARGET_COUNT,
 };
-static_assert(CV_STEPS + GATE_COUNT == CV_TARGET_COUNT,
+static_assert(CV_STEPS + CP_MOD_COUNT == CV_TARGET_COUNT,
               "CvTarget param entries must match the gate params");
 
 // A channel-page item that is a stored gate param (STEPS..SWING). These index
@@ -105,9 +105,6 @@ public:
     refreshModPulses();
     finalize();
   }
-
-  // --- Parameters (base = persisted, live = CV-modulated for playback) ---
-  static uint8_t paramCount() { return GATE_COUNT; }
 
   // Label for any channel-page item (indexed by ChannelPageParam). Single source
   // of truth for the channel-page strings.
@@ -214,18 +211,22 @@ public:
     for (uint8_t s = 0; s < CVMOD_SLOTS; s++)
       if (cvdest_[s] == CV_CLOCK_MOD)
         mod += in[s] * cvamt_[s] / 128 * (MOD_CHOICE_SIZE / 2) / 100;
-    live_clock_mod_ = constrain(base_clock_mod_ + mod, 0, MOD_CHOICE_SIZE - 1);
-    refreshModPulses();
+    if (mod) {
+      live_clock_mod_ = constrain(base_clock_mod_ + mod, 0, MOD_CHOICE_SIZE - 1);
+      refreshModPulses();
+    }
 
     // Parameters: start from base, then add each routed slot. STEPS is resolved
     // first so HITS can clamp to the modulated step count.
     syncLive();
-    for (uint8_t i = GATE_FIRST; i <= GATE_LAST; ++i) {
-      CvTarget t = (CvTarget)(i + 1); // CV_NONE == 0
+    for (uint8_t i = CP_MOD_FIRST; i <= CP_MOD_LAST; ++i) {
       int amt = 0;
       for (uint8_t s = 0; s < CVMOD_SLOTS; ++s) {
-        if (cvdest_[s] == t)
-          amt += (static_cast<int>(in[s]) * cvamt_[s]) / 128;
+        if (cvdest_[s] == (CvTarget)(i + 1)) { // to map CP to CV skipping CV_NONE == 0
+          amt += (cvdest_[s] == CV_STEPS || cvdest_[s] == CV_HITS || cvdest_[s] == CV_ROTATE)
+              ? (static_cast<int>(in[s] >> 3) * cvamt_[s]) / 100 + 1 // 100% * (127 >> 3 == 15) 
+              : (static_cast<int>(in[s]) * cvamt_[s]) / 128;
+        }
       }
       if (amt != 0) {
         live_[i] = clampParam(i, base_[i] + amt, live_[CP_STEPS]);
@@ -294,8 +295,8 @@ public:
       p[CVMOD_BASE + s] = (byte)cvdest_[s];
       p[CVMOD_BASE + CVMOD_SLOTS + s] = (byte)cvamt_[s];
     }
-    for (uint8_t i = GATE_FIRST; i <= GATE_LAST; i++)
-      p[GATE_BASE + (i - GATE_FIRST)] = base_[i];
+    for (uint8_t i = CP_MOD_FIRST; i <= CP_MOD_LAST; i++)
+      p[GATE_BASE + (i - CP_MOD_FIRST)] = base_[i];
   }
 
   void load(const byte *p) {
@@ -307,14 +308,14 @@ public:
       cvamt_[s] = (int8_t)constrain((int)(int8_t)p[CVMOD_BASE + CVMOD_SLOTS + s], -100, 100);
     }
     // Clamp in STEPS -> HITS order so HITS can bound to the loaded step count.
-    for (uint8_t i = GATE_FIRST; i <= GATE_LAST; i++)
-      base_[i] = clampParam(i, (int)p[GATE_BASE + (i - GATE_FIRST)], base_[CP_STEPS]);
+    for (uint8_t i = CP_MOD_FIRST; i <= CP_MOD_LAST; i++)
+      base_[i] = clampParam(i, (int)p[GATE_BASE + (i - CP_MOD_FIRST)], base_[CP_STEPS]);
     syncLive();
     live_clock_mod_ = base_clock_mod_;
     refreshModPulses();
     finalize();
   }
-  static const uint8_t SAVE_BYTES = GATE_BASE + GATE_COUNT;
+  static const uint8_t SAVE_BYTES = GATE_BASE + CP_MOD_COUNT;
 
 private:
   // Clamp a raw value to param i's range. HITS is bounded by `steps`.
@@ -338,7 +339,7 @@ private:
   }
 
   void syncLive() {
-    for (uint8_t i = GATE_FIRST; i <= GATE_LAST; i++)
+    for (uint8_t i = CP_MOD_FIRST; i <= CP_MOD_LAST; i++)
       live_[i] = base_[i];
   }
 
@@ -394,8 +395,8 @@ private:
   }
 
   // Parameters (indexed by ChannelPageParam; only the gate block is used).
-  uint8_t base_[GATE_LAST + 1];
-  uint8_t live_[GATE_LAST + 1];
+  uint8_t base_[CP_MOD_LAST + 1];
+  uint8_t live_[CP_MOD_LAST + 1];
   byte base_clock_mod_;
   byte live_clock_mod_;
   CvTarget cvdest_[CVMOD_SLOTS];

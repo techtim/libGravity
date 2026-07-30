@@ -28,7 +28,7 @@ void tearDown() {}
 // Six named params, with the documented defaults.
 void test_defaults(void) {
   Channel ch;
-  TEST_ASSERT_EQUAL_UINT8(GATE_COUNT, ch.paramCount());
+  TEST_ASSERT_EQUAL_UINT8(CP_MOD_COUNT, ch.paramCount());
   TEST_ASSERT_EQUAL_UINT8(7, ch.paramCount());
   TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_STEPS, false));
   TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_HITS, false));
@@ -224,6 +224,79 @@ void test_steps_shrink_grow_keeps_hits(void) {
   TEST_ASSERT_EQUAL_INT(1, hits); // E(6,1) = single hit
 }
 
+// Find the rising / falling gate phase over one clock-mod window (prob=100 so
+// the RNG is skipped). phase == tick for t in [0, mod).
+static void gateEdges(Channel &ch, uint16_t mod, int &rise, int &fall) {
+  DigitalOutput out;
+  out.Init(7);
+  rise = -1;
+  fall = -1;
+  bool prev = false;
+  for (uint32_t t = 0; t < mod; t++) {
+    ch.processClockTick(t, out);
+    bool on = out.On();
+    if (on && !prev)
+      rise = (int)t;
+    if (!on && prev)
+      fall = (int)t;
+    prev = on;
+  }
+}
+
+// Gate edges at a SLOW clock division (index 13 = /4, mod_pulses = 384). This is
+// where the finalize() phase math overflowed a 16-bit int (mod * (100-x)).
+// E(1,1): opens at phase 0, closes at 50% duty = 192.
+void test_gate_edges_slow_div(void) {
+  Channel ch;
+  ch.setClockMod(13); // /4 -> 384 pulses per step
+  int rise, fall;
+  gateEdges(ch, 384, rise, fall);
+  TEST_ASSERT_EQUAL_INT(0, rise);
+  TEST_ASSERT_EQUAL_INT(192, fall);
+}
+
+// OFFSET shifts the rising edge; DUTY shifts the falling edge - at the slow
+// division where 16-bit overflow would corrupt them.
+void test_gate_offset_duty_slow_div(void) {
+  Channel a;
+  a.setClockMod(13);
+  a.editParam(CP_OFFSET, 25); // 25% of 384 = 96
+  int rise, fall;
+  gateEdges(a, 384, rise, fall);
+  TEST_ASSERT_EQUAL_INT(96, rise);
+
+  Channel b;
+  b.setClockMod(13);
+  b.editParam(CP_DUTY, -25); // duty 50 -> 25; close at 25% of 384 = 96
+  gateEdges(b, 384, rise, fall);
+  TEST_ASSERT_EQUAL_INT(0, rise);
+  TEST_ASSERT_EQUAL_INT(96, fall);
+}
+
+// SWING delays the gate on odd steps. swing 75 (shift 25%) at mod 96: even step
+// opens at phase 0, odd step opens at phase 24.
+void test_gate_swing(void) {
+  Channel ch;
+  ch.editParam(CP_SWING, 25); // 50 -> 75
+  DigitalOutput out;
+  out.Init(7);
+  int r_even = -1, r_odd = -1;
+  bool prev = false;
+  for (uint32_t t = 0; t < 192; t++) { // two 96-pulse windows
+    ch.processClockTick(t, out);
+    bool on = out.On();
+    if (on && !prev) {
+      if (t < 96)
+        r_even = (int)t;
+      else
+        r_odd = (int)(t - 96);
+    }
+    prev = on;
+  }
+  TEST_ASSERT_EQUAL_INT(0, r_even);
+  TEST_ASSERT_EQUAL_INT(24, r_odd);
+}
+
 // The choke rule that HandleIntClockTick applies: a channel whose choke source's
 // gate is high is forced low. Replicated here over two DigitalOutputs.
 void test_choke_silences_when_source_on(void) {
@@ -261,6 +334,9 @@ int main(int argc, char **argv) {
   RUN_TEST(test_save_load_roundtrip);
   RUN_TEST(test_choke_field);
   RUN_TEST(test_pattern_rotate);
+  RUN_TEST(test_gate_edges_slow_div);
+  RUN_TEST(test_gate_offset_duty_slow_div);
+  RUN_TEST(test_gate_swing);
   RUN_TEST(test_steps_shrink_grow_keeps_hits);
   RUN_TEST(test_choke_silences_when_source_on);
   return UNITY_END();
