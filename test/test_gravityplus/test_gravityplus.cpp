@@ -193,6 +193,61 @@ void test_cv_targets_duty_and_prob(void) {
   TEST_ASSERT_EQUAL_INT(ch.getClockModIndex(false), ch.getClockModIndex(true));
 }
 
+// Run `ticks` clock ticks and report the FIRST rising edge and the first
+// falling edge after it (-1 if the gate never opened / never closed). prob=100
+// so the RNG is skipped and the edges are deterministic.
+static void gateEdges(Channel &ch, uint32_t ticks, int &rise, int &fall) {
+  DigitalOutput out;
+  out.Init(7);
+  rise = -1;
+  fall = -1;
+  bool prev = false;
+  for (uint32_t t = 0; t < ticks; t++) {
+    ch.processClockTick(t, out);
+    bool on = out.On();
+    if (on && !prev && rise < 0)
+      rise = (int)t;
+    if (!on && prev && rise >= 0 && fall < 0)
+      fall = (int)t;
+    prev = on;
+  }
+}
+
+// OFFSET 98% pushes the gate almost a whole step late, so it opens near the end
+// of one step and closes inside the next. mod = 96: offset_pulses = 96*2/100 = 1
+// -> opens at phase 95; duty 50% closes 48 pulses later, at phase 47 of the next
+// window (tick 143). The gate length must still be the full 50% duty.
+void test_gate_offset_98(void) {
+  Channel ch;
+  ch.editParam(CP_OFFSET, 98);
+  TEST_ASSERT_EQUAL_INT(98, ch.paramValue(CP_OFFSET, false));
+  int rise, fall;
+  gateEdges(ch, 192, rise, fall); // two windows: the gate wraps the boundary
+  TEST_ASSERT_EQUAL_INT(95, rise);
+  TEST_ASSERT_EQUAL_INT(143, fall);
+  TEST_ASSERT_EQUAL_INT(48, fall - rise); // 50% of a 96-pulse step
+}
+
+// Edge phases must wrap to 0 when the shift lands on a whole step, otherwise the
+// computed phase equals mod - which `phase` (0..mod-1) never reaches - and the
+// gate sticks. Regression: (mod - shift % mod) lost its outer % mod.
+void test_gate_edges_wrap_to_zero(void) {
+  // duty 50 + offset 50 -> close shift = 48 + 48 = 96 = one whole step.
+  Channel a;
+  a.editParam(CP_OFFSET, 50);
+  int rise, fall;
+  gateEdges(a, 192, rise, fall);
+  TEST_ASSERT_EQUAL_INT(48, rise);
+  TEST_ASSERT_EQUAL_INT(96, fall); // must close, not stay high forever
+
+  // offset 99 -> offset_pulses = 96*1/100 = 0 -> opens on phase 0.
+  Channel b;
+  b.editParam(CP_OFFSET, 99);
+  gateEdges(b, 192, rise, fall);
+  TEST_ASSERT_EQUAL_INT(0, rise); // must open, not stay low forever
+  TEST_ASSERT_EQUAL_INT(48, fall);
+}
+
 // Full save/load round-trip through the raw byte payload (choke included).
 void test_save_load_roundtrip(void) {
   Channel ch;
@@ -263,25 +318,6 @@ void test_steps_shrink_grow_keeps_hits(void) {
     if (ch.patternHit(i))
       hits++;
   TEST_ASSERT_EQUAL_INT(1, hits); // E(6,1) = single hit
-}
-
-// Find the rising / falling gate phase over one clock-mod window (prob=100 so
-// the RNG is skipped). phase == tick for t in [0, mod).
-static void gateEdges(Channel &ch, uint16_t mod, int &rise, int &fall) {
-  DigitalOutput out;
-  out.Init(7);
-  rise = -1;
-  fall = -1;
-  bool prev = false;
-  for (uint32_t t = 0; t < mod; t++) {
-    ch.processClockTick(t, out);
-    bool on = out.On();
-    if (on && !prev)
-      rise = (int)t;
-    if (!on && prev)
-      fall = (int)t;
-    prev = on;
-  }
 }
 
 // Gate edges at a SLOW clock division (index 13 = /4, mod_pulses = 384). This is
@@ -377,6 +413,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_save_load_roundtrip);
   RUN_TEST(test_choke_field);
   RUN_TEST(test_pattern_rotate);
+  RUN_TEST(test_gate_offset_98);
+  RUN_TEST(test_gate_edges_wrap_to_zero);
   RUN_TEST(test_gate_edges_slow_div);
   RUN_TEST(test_gate_offset_duty_slow_div);
   RUN_TEST(test_gate_swing);

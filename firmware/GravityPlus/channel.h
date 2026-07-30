@@ -322,6 +322,18 @@ public:
   static const uint8_t SAVE_BYTES = GATE_BASE + CP_MOD_COUNT;
 
 private:
+  // Phase at which a gate edge with the given pulse `shift` occurs, i.e.
+  // (mod - shift % mod) % mod, reduced by subtraction instead of a 32-bit
+  // modulo. The final wrap to 0 is essential: when shift is a whole number of
+  // steps the edge belongs on phase 0, and `mod` itself is never reached (phase
+  // only runs 0..mod-1), which would leave the gate stuck. duty/offset/swing
+  // pulses are each <= mod, so the loop runs at most 3 times.
+  static uint16_t edgePhase(uint32_t shift, uint16_t mod) {
+    while (shift >= mod)
+      shift -= mod;
+    return shift ? (uint16_t)(mod - shift) : 0;
+  }
+
   // Clamp a raw value to param i's range. HITS is bounded by `steps`.
   static int clampParam(uint8_t i, int v, int8_t steps) {
     switch (i) {
@@ -389,10 +401,10 @@ private:
     swing_pulses_ =
         (live_[CP_SWING] > 50) ? static_cast<int32_t>(mod_pulses_) * (100 - (live_[CP_SWING] - 50)) / 100 : 0;
 
-    high_phase_ = mod_pulses_ - offset_pulses;
-    high_phase_sw_ = mod_pulses_ - ((offset_pulses + swing_pulses_) % mod_pulses_);
-    low_phase_ = mod_pulses_ - ((duty_pulses + offset_pulses) % mod_pulses_);
-    low_phase_sw_ = mod_pulses_ - ((duty_pulses + offset_pulses + swing_pulses_) % mod_pulses_);
+    high_phase_ = edgePhase(offset_pulses, mod_pulses_);
+    high_phase_sw_ = edgePhase((uint32_t)offset_pulses + swing_pulses_, mod_pulses_);
+    low_phase_ = edgePhase((uint32_t)duty_pulses + offset_pulses, mod_pulses_);
+    low_phase_sw_ = edgePhase((uint32_t)duty_pulses + offset_pulses + swing_pulses_, mod_pulses_);
   }
 
   // Parameters (indexed by ChannelPageParam; only the gate block is used).

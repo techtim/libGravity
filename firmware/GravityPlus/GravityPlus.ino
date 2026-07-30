@@ -92,8 +92,7 @@ void loop() {
 
   // Clock run from a CV gate.
   if (app.cv_run == 1 || app.cv_run == 2) {
-    auto &cv = app.cv_run == 1 ? gravity.cv1 : gravity.cv2;
-    int val = cv.Read();
+    int8_t val = app.cv_run == 1 ? gravity.cv1.Read() >> 2 : gravity.cv2.Read() >> 2;
     if (val > AnalogInput::GATE_THRESHOLD && gravity.clock.IsPaused()) {
       gravity.clock.Start();
       app.refresh_screen = true;
@@ -324,8 +323,8 @@ void HandleRotate(int val) {
     return;
   }
   if (!app.editing_param) {
-    const int max_param =
-        (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CP_PARAM_COUNT;
+    const uint8_t max_param =
+        (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT;
     updateSelection(app.selected_param, val, max_param);
   } else {
     if (app.selected_channel == 0) {
@@ -340,8 +339,8 @@ void HandleRotate(int val) {
 void HandlePressedRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
   // Keep the selected param across channels; clamp to the destination page.
-  int max_param =
-      (app.selected_channel == 0) ? (int)PARAM_MAIN_LAST : (int)CP_PARAM_COUNT;
+  const uint8_t max_param =
+      (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT;
   if (app.selected_param >= max_param) {
     app.selected_param = max_param - 1;
   }
@@ -416,13 +415,12 @@ void editMainParameter(int val, bool held) {
 // for a latched click-then-rotate (adjusts the CV amount).
 void editChannelParameter(int val, bool held) {
   auto &ch = GetSelectedChannel();
-  const uint8_t param = app.selected_param;
 
-  if (param == CP_CLOCK_MOD) {
+  if (app.selected_param == CP_CLOCK_MOD) {
     ch.setClockMod(ch.getClockModIndex() + val);
-  } else if (pageParamIsGate(param)) {
-    ch.editParam(param, val);
-  } else if (param == CP_CHOKE) {
+  } else if (pageParamIsGate(app.selected_param)) {
+    ch.editParam(app.selected_param, val);
+  } else if (app.selected_param == CP_CHOKE) {
     // Choke source: 0 = off, else a 1-based channel number. A channel may not
     // choke itself, so hop over its own number (app.selected_channel).
     byte prev = ch.getChoke();
@@ -437,7 +435,7 @@ void editChannelParameter(int val, bool held) {
   } else {
     // CV mod slot (CV1-A/B, CV2-A/B). Hold+rotate picks the destination;
     // click+rotate sets the amount (-100..100, negative inverts).
-    uint8_t slot = param - CP_CV1A;
+    uint8_t slot = app.selected_param - CP_CV1A;
     if (held) {
       byte t = static_cast<int>(ch.getCvDest(slot));
       updateSelection(t, val, CV_TARGET_COUNT); // CV_NONE..CV_SWING
