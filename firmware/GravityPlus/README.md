@@ -20,6 +20,9 @@ The internal clock runs at 96 PPQN for fine-grained duty / offset / clock divisi
 | **Encoder rotate** | Move between parameters (or edit, while in edit mode) |
 | **BTN1 (PLAY)** | Start / stop the internal clock |
 | **SHIFT (BTN2) + PLAY** | Mute — the selected channel, or all channels on the global page |
+
+Setting `BTN MODE` to `INVERTED` on the global page swaps those two: PLAY on its
+own mutes, and SHIFT + PLAY starts / stops the clock.
 | **BTN2 + rotate** | Change the selected channel (global page ↔ channels 1–6) |
 
 The top row of the display selects the page: the play/pause icon is the **global
@@ -47,7 +50,7 @@ step, filled = hit, outline = rest), then these parameters:
 
 `TEMPO`, `RUN` (start/stop from a CV gate), `RESTART` (reset source: none / CV1 /
 CV2 / EXT), `SOURCE` (internal, external 24/4/2/1 PPQN, or MIDI clock), `PULSE OUT`
-(clock pulse resolution), `ENCODER DIR`, `ROTATE DISP` (flip the screen),
+(clock pulse resolution), `ENCODER DIR`, `ROTATE DISP` (flip the screen), `BTN MODE`,
 `SAVE` / `LOAD` (10 slots, `A1`–`B5`), `RESET` (restore defaults), the six CV
 calibration items, and `ERASE` (full factory reset).
 

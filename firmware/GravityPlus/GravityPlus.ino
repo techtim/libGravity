@@ -19,6 +19,7 @@
  *      Hold & Rotate: momentary edit of the selected parameter.
  *
  * BTN1 (PLAY):  start / stop the internal clock. SHIFT + PLAY mutes.
+ *               BTN MODE = INVERTED swaps these two.
  * BTN2 (SHIFT): hold and rotate the encoder to change the selected channel.
  *
  * EXT:  external clock in; also acts as a reset when routed via RESTART.
@@ -39,6 +40,8 @@ StateManager stateManager;
 void updateSelection(byte &param, int change, int maxValue);
 void editMainParameter(int val, bool held);
 void editChannelParameter(int val, bool held);
+void editSelectedParameter(int val, bool held);
+uint8_t pageParamCount();
 void InitGravity(AppState &app);
 void ApplyCvCal();
 void ResetOutputs();
@@ -170,10 +173,11 @@ void HandleIntClockTick(uint32_t tick) {
     }
     const uint16_t pulse_high_ticks =
         pgm_read_word_near(&CLOCK_MOD_PULSES[clock_index]);
-    const uint32_t pulse_low_ticks = tick + max((pulse_high_ticks / 2), 1L);
-    if (tick % pulse_high_ticks == 0) {
+    const uint16_t low_at = max(pulse_high_ticks / 2, 1);
+    const uint16_t phase = tick % pulse_high_ticks;
+    if (phase == 0) {
       gravity.pulse.High();
-    } else if (pulse_low_ticks % pulse_high_ticks == 0) {
+    } else if (phase == pulse_high_ticks - low_at) {
       gravity.pulse.Low();
     }
   }
@@ -205,7 +209,7 @@ void HandleExtClockTick() {
 //
 
 void HandlePlayPressed() {
-  if (gravity.shift_button.On()) {
+  if (gravity.shift_button.On() != app.invert_buttons) {
     if (app.selected_channel == 0) {
       for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
         app.channel[i].toggleMute();
@@ -234,6 +238,10 @@ void ExitEditing() {
     case PARAM_MAIN_ROTATE_DISP:
       app.rotate_display = app.selected_sub_param == 1;
       gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
+      stateManager.markMetadataDirty();
+      break;
+    case PARAM_MAIN_BTN_MODE:
+      app.invert_buttons = app.selected_sub_param == 1;
       stateManager.markMetadataDirty();
       break;
     case PARAM_MAIN_SAVE_DATA:
@@ -285,6 +293,8 @@ void EnterEditing() {
       app.selected_sub_param = app.encoder_reversed ? 1 : 0; break;
     case PARAM_MAIN_ROTATE_DISP:
       app.selected_sub_param = app.rotate_display ? 1 : 0; break;
+    case PARAM_MAIN_BTN_MODE:
+      app.selected_sub_param = app.invert_buttons ? 1 : 0; break;
     default:
       break;
     }
@@ -303,11 +313,7 @@ void HandleEncoderHeldRotate(int val) {
   if (!app.editing_param) {
     EnterEditing();
   }
-  if (app.selected_channel == 0) {
-    editMainParameter(val, /*held=*/true);
-  } else {
-    editChannelParameter(val, /*held=*/true); // hold+rotate -> CV destination
-  }
+  editSelectedParameter(val, /*held=*/true); // hold+rotate -> CV destination
   app.refresh_screen = true;
 }
 
@@ -323,15 +329,9 @@ void HandleRotate(int val) {
     return;
   }
   if (!app.editing_param) {
-    const uint8_t max_param =
-        (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT;
-    updateSelection(app.selected_param, val, max_param);
+    updateSelection(app.selected_param, val, pageParamCount());
   } else {
-    if (app.selected_channel == 0) {
-      editMainParameter(val, /*held=*/false);
-    } else {
-      editChannelParameter(val, /*held=*/false); // click+rotate -> CV amount
-    }
+    editSelectedParameter(val, /*held=*/false); // click+rotate -> CV amount
   }
   app.refresh_screen = true;
 }
@@ -339,8 +339,7 @@ void HandleRotate(int val) {
 void HandlePressedRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
   // Keep the selected param across channels; clamp to the destination page.
-  const uint8_t max_param =
-      (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT;
+  const uint8_t max_param = pageParamCount();
   if (app.selected_param >= max_param) {
     app.selected_param = max_param - 1;
   }
@@ -397,6 +396,7 @@ void editMainParameter(int val, bool held) {
   // Applied on encoder button press.
   case PARAM_MAIN_ENCODER_DIR:
   case PARAM_MAIN_ROTATE_DISP:
+  case PARAM_MAIN_BTN_MODE:
   case PARAM_MAIN_RESET_STATE:
   case PARAM_MAIN_FACTORY_RESET:
     updateSelection(app.selected_sub_param, val, 2);
@@ -443,6 +443,21 @@ void editChannelParameter(int val, bool held) {
     } else {
       ch.setCvAmount(slot, ch.getCvAmount(slot) + val);
     }
+  }
+}
+
+// Number of menu rows on the page currently shown.
+uint8_t pageParamCount() {
+  return (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST
+                                     : (uint8_t)CP_PARAM_COUNT;
+}
+
+// Route an edit to whichever page is showing.
+void editSelectedParameter(int val, bool held) {
+  if (app.selected_channel == 0) {
+    editMainParameter(val, held);
+  } else {
+    editChannelParameter(val, held);
   }
 }
 

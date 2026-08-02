@@ -110,25 +110,8 @@ public:
     finalize();
   }
 
-  // Label for any channel-page item (indexed by ChannelPageParam). Single source
-  // of truth for the channel-page strings.
-  static const __FlashStringHelper *paramLabel(uint8_t i) {
-    switch (i) {
-    case CP_CLOCK_MOD: return F("CLOCK MOD");
-    case CP_STEPS: return F("STEPS");
-    case CP_HITS: return F("HITS");
-    case CP_ROTATE: return F("ROTATE");
-    case CP_PROB: return F("PROBAB");
-    case CP_DUTY: return F("DUTY");
-    case CP_OFFSET: return F("OFFSET");
-    case CP_SWING: return F("SWING");
-    case CP_CHOKE: return F("CHOKE");
-    case CP_CV1A: return F("CV1-A");
-    case CP_CV1B: return F("CV1-B");
-    case CP_CV2A: return F("CV2-A");
-    default: return F("CV2-B");
-    }
-  }
+  // The channel-page labels live in display.h (channelParamLabel), keeping the
+  // strings with the rest of the UI text and this header free of u8g2 types.
 
   // Value to show for param i: the modulated value when a CV drives it (and not
   // editing), otherwise the base value.
@@ -393,9 +376,8 @@ private:
       pattern_ = rotated;
     }
 
-    // Gate edge phases. The gate opens `offset` into the step and closes after
-    // `duty` of the step; swing pushes both later on odd steps. Precomputing
-    // these makes process() a pair of phase compares (no 32-bit modulo).
+    // Gate edge phases. The gate opens `offset` into the step and closes after swing pushes both later on odd steps.
+    // Precomputing these makes process() a pair of phase compares (no 32-bit modulo).
     const uint16_t duty_pulses = max(static_cast<int32_t>(mod_pulses_) * (100 - live_[CP_DUTY]) / 100, 1);
     const uint16_t offset_pulses = static_cast<int32_t>(mod_pulses_) * (100 - live_[CP_OFFSET]) / 100;
     swing_pulses_ =

@@ -33,6 +33,7 @@ struct AppState {
   bool editing_param = false;
   bool encoder_reversed = true;
   bool rotate_display = false;
+  bool invert_buttons = false; // false: PLAY starts/stops, SHIFT+PLAY mutes. true: the two swap.
   bool refresh_screen = true;
   // Per-input ADC calibration, in menu order: [CV1 low, CV1 offset, CV1 high,
   // CV2 low, CV2 offset, CV2 high]. Applied to gravity.cvN in InitGravity.
@@ -51,8 +52,9 @@ inline void ResetAppState(AppState &app) {
   app.selected_pulse = Clock::PULSE_PPQN_24;
   app.cv_run = 0;
   app.cv_reset = CV_RESET_NONE;
-  app.encoder_reversed = false;
+  app.encoder_reversed = true;
   app.rotate_display = false;
+  app.invert_buttons = false;
   app.editing_param = false;
   for (uint8_t i = 0; i < 6; i += CAL_PER_INPUT) {
     app.cv_cal[i] = CALIBRATED_LOW;

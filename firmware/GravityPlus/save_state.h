@@ -40,6 +40,8 @@ public:
     byte selected_save_slot;
     bool encoder_reversed;
     bool rotate_display;
+    bool invert_buttons;
+    bool future_flag;
     // Global performance settings - kept here (not per save slot) so the
     // frequent transient EepromData save stays small.
     byte selected_source;

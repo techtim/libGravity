@@ -5,3 +5,9 @@ build/*
 
 # PlatformIO
 .pio/
+.clinerules/
+.cursor/
+.github/copilot-instructions.md
+.opencode/
+.windsurf/
+AGENTS.md

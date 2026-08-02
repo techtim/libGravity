@@ -199,6 +199,7 @@ void StateManager::_saveMetadata(const AppState &app) {
   current_meta.selected_save_slot = app.selected_save_slot;
   current_meta.encoder_reversed = app.encoder_reversed;
   current_meta.rotate_display = app.rotate_display;
+  current_meta.invert_buttons = app.invert_buttons;
   current_meta.selected_source = static_cast<byte>(app.selected_source);
   current_meta.selected_pulse = static_cast<byte>(app.selected_pulse);
   current_meta.cv_run = app.cv_run;
@@ -214,6 +215,7 @@ void StateManager::_loadMetadata(AppState &app) {
   app.selected_save_slot = metadata.selected_save_slot;
   app.encoder_reversed = metadata.encoder_reversed;
   app.rotate_display = metadata.rotate_display;
+  app.invert_buttons = metadata.invert_buttons;
   app.selected_source = static_cast<Clock::Source>(metadata.selected_source);
   app.selected_pulse = static_cast<Clock::Pulse>(metadata.selected_pulse);
   app.cv_run = metadata.cv_run;
