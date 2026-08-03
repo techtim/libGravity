@@ -220,23 +220,23 @@ inline void copyP(char *dst, size_t n, const __FlashStringHelper *f) {
 // Helper function to draw centered text
 void drawCenteredText(const char *text, int y, const uint8_t *font) {
   gravity.display.setFont(font);
-  int textWidth = gravity.display.getStrWidth(text);
+  uint8_t textWidth = gravity.display.getStrWidth(text);
   gravity.display.drawStr(SCREEN_CENTER_X - (textWidth / 2), y, text);
 }
 
 // Helper function to draw right-aligned text
 void drawRightAlignedText(const char *text, int y) {
-  int textWidth = gravity.display.getStrWidth(text);
-  int drawX = (SCREEN_WIDTH - textWidth) - MENU_BOX_PADDING;
+  uint8_t textWidth = gravity.display.getStrWidth(text);
+  uint8_t drawX = (SCREEN_WIDTH - textWidth) - MENU_BOX_PADDING;
   gravity.display.drawStr(drawX, y, text);
 }
 
 void drawMainSelection() {
   gravity.display.setDrawColor(1);
-  const int offsetY = 6;
-  const int tickSize = 3;
-  const int mainWidth = SCREEN_WIDTH / 2;
-  const int mainHeight = 46;
+  const uint8_t offsetY = 6;
+  const uint8_t tickSize = 3;
+  const uint8_t mainWidth = SCREEN_WIDTH / 2;
+  const uint8_t mainHeight = 46;
   gravity.display.drawLine(0, offsetY, tickSize, offsetY);
   gravity.display.drawLine(0, offsetY, 0, tickSize + offsetY);
   gravity.display.drawLine(mainWidth, offsetY, mainWidth - tickSize, offsetY);
@@ -250,23 +250,25 @@ void drawMainSelection() {
   gravity.display.setDrawColor(2);
 }
 
-// Draw the channel's euclidean pattern along the top: 4 px per step, filled
-// box for a hit, empty for a rest, centered on the step count.
+// Draw the channel's euclidean pattern along the top
 void drawChannelPattern(const Channel &ch) {
   const uint8_t sz = 5; // px per step
   uint8_t steps = ch.patternSteps();
-  int x0 = (SCREEN_WIDTH - steps * sz) / 2; // centered on the step count
-  const int w = steps * sz;
+  uint8_t x0 = (SCREEN_WIDTH - steps * sz) / 2; // centered on the step count
+  const uint8_t w = steps * sz;
   gravity.display.setDrawColor(1);
-  // Grid: top/bottom rails + a vertical divider at every step boundary, so each
-  // step (hit or rest) reads as the same-width cell.
   gravity.display.drawHLine(x0, sz - 1, w);
   for (uint8_t i = 0; i <= steps; ++i) {
     gravity.display.drawVLine(x0 + i * sz, 0, sz);
     if (i < steps && ch.patternHit(i))
       gravity.display.drawBox(x0 + i * sz, 0, sz, sz);
   }
-  gravity.display.setDrawColor(2);
+  
+  const int mod_value = ch.getClockMod(true);
+  g_sub[0] = mod_value > 1 ? '/' : 'x';
+  itoa(abs(mod_value), g_sub + 1, 10);
+  gravity.display.setFont(TEXT_FONT);
+  gravity.display.drawStr(0, sz, g_sub);
 }
 
 // Labels are fetched one at a time through a lookup function: only the three
@@ -280,18 +282,18 @@ void drawMenuItems(MenuLabelFn menu_label, int menu_size) {
   // Scroll window: the selection sits on the middle row, except at either end
   // of the list where the window is pinned. The highlight row then follows from
   // the selection's position inside that window.
-  int start_index = 0;
+  uint8_t start_index = 0;
   if (menu_size >= VISIBLE_MENU_ITEMS && app.selected_param == menu_size - 1) {
     start_index = menu_size - VISIBLE_MENU_ITEMS;
   } else if (app.selected_param > 0) {
     start_index = app.selected_param - 1;
   }
-  int selectedBoxY = MENU_ITEM_HEIGHT * (app.selected_param - start_index);
+  uint8_t selectedBoxY = MENU_ITEM_HEIGHT * (app.selected_param - start_index);
 
-  int boxX = MENU_BOX_WIDTH + 1;
-  int boxY = MENU_ITEM_Y + selectedBoxY + 2;
-  int boxWidth = MENU_BOX_WIDTH - 1;
-  int boxHeight = MENU_ITEM_HEIGHT + 1;
+  uint8_t boxX = MENU_BOX_WIDTH + 1;
+  uint8_t boxY = MENU_ITEM_Y + selectedBoxY + 2;
+  uint8_t boxWidth = MENU_BOX_WIDTH - 1;
+  uint8_t boxHeight = MENU_ITEM_HEIGHT + 1;
 
   if (app.editing_param) {
     gravity.display.drawBox(boxX, boxY, boxWidth, boxHeight);
@@ -312,18 +314,18 @@ inline void solidTick() { gravity.display.drawBox(56, 4, 4, 4); }
 
 // Center-zero horizontal bar meter for a bipolar CV reading (-512..+512). The
 // fill grows right of centre for positive readings, left for negative.
-void drawCvMeter(int value, int x, int y, int w, int h) {
-  const int half = w / 2;
-  const int cx = x + half;
+void drawCvMeter(int value, uint8_t x, uint8_t y, uint8_t w, uint8_t h) {
+  const uint8_t half = w / 2;
+  const uint8_t cx = x + half;
   gravity.display.setDrawColor(1);
   gravity.display.drawFrame(x, y, w, h);
   gravity.display.drawVLine(cx, y - 2, h + 4); // centre tick
   if (value >= 0) {
-    int fill = constrain(map(value, 0, 512, 0, half), 0, half);
+    uint8_t fill = constrain(map(value, 0, 512, 0, half), 0, half);
     if (fill > 0)
       gravity.display.drawBox(cx, y, fill, h);
   } else {
-    int fill = constrain(map(-value, 0, 512, 0, half), 0, half);
+    uint8_t fill = constrain(map(-value, 0, 512, 0, half), 0, half);
     if (fill > 0)
       gravity.display.drawBox(cx - fill, y, fill, h);
   }
@@ -332,7 +334,7 @@ void drawCvMeter(int value, int x, int y, int w, int h) {
 
 // Human friendly display value for save slot, written into `out` (e.g. "A3").
 void displaySaveSlot(char *out, int slot) {
-  const int half = StateManager::MAX_SAVE_SLOTS / 2;
+  const uint8_t half = StateManager::MAX_SAVE_SLOTS / 2;
   if (slot < half) {
     out[0] = 'A';
     itoa(slot + 1, out + 1, 10);
@@ -389,6 +391,7 @@ void DisplayMainPage() {
   case PARAM_MAIN_CV2_CAL_HI: {
     bool is1 = app.selected_param <= PARAM_MAIN_CV1_CAL_HI;
     cv_meter_value = is1 ? gravity.cv1.Read() : gravity.cv2.Read();
+    itoa(app.cv_cal[app.selected_param - PARAM_MAIN_CV1_CAL_LO], g_main, 10); // cal value
     show_cv_meter = true; // tune against the live reading
     copyP(g_sub, sizeof(g_sub), mainParamLabel(app.selected_param));
     break;
@@ -469,7 +472,8 @@ void DisplayMainPage() {
   }
 
   if (show_cv_meter) {
-    drawCvMeter(cv_meter_value, 2, 18, 60, 12);
+    drawCenteredText(g_main, MAIN_TEXT_Y / 2, TEXT_FONT);
+    drawCvMeter(cv_meter_value, 2, 20, 60, 12);
   } else {
     drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
   }
@@ -537,7 +541,7 @@ void DisplayChannelPage() {
       if (ch.getCvAmount(slot) < 0) {
         gravity.display.drawBox(0, 24, 4, 2); // '-' sign
       }
-      itoa(ch.getCvAmount(slot), g_main, 10);
+      itoa(abs(ch.getCvAmount(slot)), g_main, 10);
       appendChar(g_main, '%'); // amount is a depth percentage
       copyP(g_sub, sizeof(g_sub), cvTargetLabel(dest));
     }
@@ -551,10 +555,10 @@ void DisplayChannelPage() {
 }
 
 void DisplaySelectedChannel() {
-  int boxY = CHANNEL_BOXES_Y;
-  int boxWidth = CHANNEL_BOX_WIDTH;
-  int boxHeight = CHANNEL_BOX_HEIGHT;
-  int textOffset = 7; // Half of font width
+  uint8_t boxY = CHANNEL_BOXES_Y;
+  uint8_t boxWidth = CHANNEL_BOX_WIDTH;
+  uint8_t boxHeight = CHANNEL_BOX_HEIGHT;
+  uint8_t textOffset = 7; // Half of font width
 
   gravity.display.drawHLine(1, boxY, SCREEN_WIDTH - 2);
   gravity.display.drawVLine(SCREEN_WIDTH - 2, boxY, boxHeight);
@@ -576,8 +580,7 @@ void DisplaySelectedChannel() {
       gravity.display.setFont(TEXT_FONT);
       const char label[2] = {
           app.channel[i - 1].isMuted() ? 'M' : (char)('0' + i), '\0'};
-      gravity.display.drawStr((i * boxWidth) + textOffset, SCREEN_HEIGHT - 3,
-                              label);
+      gravity.display.drawStr((i * boxWidth) + textOffset, SCREEN_HEIGHT - 3, label);
     }
   }
 }
@@ -598,7 +601,7 @@ void UpdateDisplay() {
 void Bootsplash() {
   gravity.display.firstPage();
   do {
-    int textWidth;
+    uint8_t textWidth;
 
     gravity.display.setFont(LARGE_FONT);
     copyP(g_main, sizeof(g_main), F("AV"));

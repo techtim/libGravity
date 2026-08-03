@@ -110,11 +110,7 @@ public:
     finalize();
   }
 
-  // The channel-page labels live in display.h (channelParamLabel), keeping the
-  // strings with the rest of the UI text and this header free of u8g2 types.
-
-  // Value to show for param i: the modulated value when a CV drives it (and not
-  // editing), otherwise the base value.
+  // Value to show for param i: the modulated value when a CV drives it (and not editing), otherwise the base value.
   uint8_t paramValue(uint8_t i, bool withCvMod) const {
     return (withCvMod && targetsParam((ChannelPageParam)i)) ? live_[i] : base_[i];
   }
@@ -176,7 +172,6 @@ public:
   void setChoke(uint8_t source) { choke_ = source; }
   uint8_t getChoke() const { return choke_; }
 
-  // --- Pattern view (for the UI) ---
   uint8_t patternSteps() const { return live_[CP_STEPS]; }
   bool patternHit(uint8_t i) const { return (pattern_ & (1U << i)) != 0; }
 

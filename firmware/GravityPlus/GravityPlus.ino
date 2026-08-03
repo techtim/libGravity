@@ -90,6 +90,9 @@ void loop() {
     auto &ch = app.channel[i];
     if (ch.isCvActive()) {
       ch.applyCvMod(cv1, cv2);
+      if (app.selected_channel == i + 1) {
+        app.refresh_screen = true;
+      }
     }
   }
 
@@ -136,13 +139,9 @@ void loop() {
 //
 
 void HandleIntClockTick(uint32_t tick) {
-  bool refresh = false;
   // Phase 1: decide every channel's output (deferred - no pins written yet).
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].processClockTick(tick, gravity.outputs[i]);
-    if (app.channel[i].isCvActive()) {
-      refresh = true;
-    }
   }
   // Choke: silence any channel whose choke source's gate is high this tick.
   // Snapshot the decided gate states first so the trigger is the source's
@@ -180,10 +179,6 @@ void HandleIntClockTick(uint32_t tick) {
     } else if (phase == pulse_high_ticks - low_at) {
       gravity.pulse.Low();
     }
-  }
-
-  if (!app.editing_param) {
-    app.refresh_screen |= refresh;
   }
 }
 
@@ -480,9 +475,9 @@ void ApplyCvCal() {
   for (uint8_t i = 0; i < 2; i++) {
     AnalogInput &cv = i == 0 ? gravity.cv1 : gravity.cv2;
     uint8_t b = i * CAL_PER_INPUT; // [low, offset, high]
-    app.cv_cal[b] = constrain(app.cv_cal[b], -1024, -100);
-    app.cv_cal[b + 1] = constrain(app.cv_cal[b + 1], -1024, 1024);
-    app.cv_cal[b + 2] = constrain(app.cv_cal[b + 2], 100, 1024);
+    app.cv_cal[b] = constrain(app.cv_cal[b], -1536, -100);
+    app.cv_cal[b + 1] = constrain(app.cv_cal[b + 1], -1536, 1536);
+    app.cv_cal[b + 2] = constrain(app.cv_cal[b + 2], 100, 1536);
     cv.SetCalibrationLow(app.cv_cal[b]);
     cv.SetCalibrationHigh(app.cv_cal[b + 2]);
     cv.AdjustOffset(app.cv_cal[b + 1] - cv.GetOffset());

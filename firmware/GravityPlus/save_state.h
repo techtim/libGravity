@@ -29,8 +29,8 @@ public:
   void saveData(const AppState &app);
   void reset(AppState &app);
   void update(const AppState &app);
-  void markDirty();
-  void markMetadataDirty(); // metadata changed (encoder/rotate/CV cal/slot)
+  void markDirty(); // EepromData changed
+  void markMetadataDirty(); // Metadata changed (encoder/rotate/CV cal/etc)
   void factoryReset(AppState &app);
 
   struct Metadata {
@@ -42,8 +42,6 @@ public:
     bool rotate_display;
     bool invert_buttons;
     bool future_flag;
-    // Global performance settings - kept here (not per save slot) so the
-    // frequent transient EepromData save stays small.
     byte selected_source;
     byte selected_pulse;
     byte cv_run;

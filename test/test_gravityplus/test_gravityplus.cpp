@@ -169,6 +169,27 @@ void test_cv_targets_clock_mod(void) {
   TEST_ASSERT_EQUAL_INT(clockModValue(5), ch.getClockMod(true));
 }
 
+// A CV routed to HITS must actually change the drawn pattern, not just live_.
+void test_cv_hits_redraws_pattern(void) {
+  Channel ch;
+  ch.editParam(CP_STEPS, 7); // 8 steps
+  ch.editParam(CP_HITS, 1);  // 2 hits
+  ch.setCvDest(0, CV_HITS);
+  ch.setCvAmount(0, 100);
+
+  ch.applyCvMod(0, 0); // no CV: pattern is E(2,8)
+  uint8_t hits_at_zero = 0;
+  for (uint8_t i = 0; i < ch.patternSteps(); i++)
+    hits_at_zero += ch.patternHit(i) ? 1 : 0;
+  TEST_ASSERT_EQUAL_INT(2, hits_at_zero);
+
+  ch.applyCvMod(127, 0); // full CV: +15 hits, clamped to steps
+  uint8_t hits_at_full = 0;
+  for (uint8_t i = 0; i < ch.patternSteps(); i++)
+    hits_at_full += ch.patternHit(i) ? 1 : 0;
+  TEST_ASSERT_EQUAL_INT(8, hits_at_full);
+}
+
 // Two further destinations, one per CV input: CV1-B -> DUTY, CV2-A -> PROB.
 // Each moves only its own param; unrouted params still read as base.
 void test_cv_targets_duty_and_prob(void) {
@@ -410,6 +431,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_cv_param_targeting);
   RUN_TEST(test_cv_targets_clock_mod);
   RUN_TEST(test_cv_targets_duty_and_prob);
+  RUN_TEST(test_cv_hits_redraws_pattern);
   RUN_TEST(test_save_load_roundtrip);
   RUN_TEST(test_choke_field);
   RUN_TEST(test_pattern_rotate);
