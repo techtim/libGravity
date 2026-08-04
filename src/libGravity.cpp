@@ -69,7 +69,7 @@ void Gravity::Process() {
     cv2.Process();
 
     // Update Output states.
-    for (uint8_t i; i < OUTPUT_COUNT; i++) {
+    for (uint8_t i = 0; i < OUTPUT_COUNT; i++) {
         outputs[i].Process();
     }
 }

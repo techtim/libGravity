@@ -154,7 +154,7 @@ bool StateManager::_isDataValid() {
 }
 
 void StateManager::_saveState(const AppState &app, byte slot_index) {
-  if (app.selected_save_slot >= MAX_SAVE_SLOTS + 1)
+  if (slot_index >= MAX_SAVE_SLOTS + 1)
     return;
 
   EepromData &save_data = eeprom_io;
@@ -218,9 +218,11 @@ void StateManager::_loadMetadata(AppState &app) {
   Metadata metadata;
   EEPROM.get(METADATA_START_ADDR, metadata);
   app.selected_save_slot = metadata.selected_save_slot;
-  app.encoder_reversed = metadata.encoder_reversed;
-  app.rotate_display = metadata.rotate_display;
-  app.invert_buttons = metadata.invert_buttons;
+  if (app.selected_save_slot >= MAX_SAVE_SLOTS)
+    app.selected_save_slot = 0;
+  app.encoder_reversed = metadata.encoder_reversed != false;
+  app.rotate_display = metadata.rotate_display != false;
+  app.invert_buttons = metadata.invert_buttons != false;
   app.selected_source = static_cast<Clock::Source>(metadata.selected_source);
   app.selected_pulse = static_cast<Clock::Pulse>(metadata.selected_pulse);
   app.cv_run = metadata.cv_run;

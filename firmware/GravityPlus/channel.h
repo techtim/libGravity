@@ -18,6 +18,8 @@
 
 #include <Arduino.h>
 
+#include <libGravity.h>
+
 #include "clock_mod.h"
 #include "digital_output.h"
 
@@ -211,9 +213,8 @@ public:
               : (static_cast<int>(in[s]) * cvamt_[s]) / 128;
         }
       }
-      if (amt != 0) {
-        live_[i] = clampParam(i, base_[i] + amt, live_[CP_STEPS]);
-      }
+      // Always clamp to protect from overflow
+      live_[i] = clampParam(i, base_[i] + amt, live_[CP_STEPS]);
     }
     finalize();
   }
@@ -284,7 +285,7 @@ public:
   void load(const byte *p) {
     base_clock_mod_ = constrain((int)p[0], 0, MOD_CHOICE_SIZE - 1);
     mute_ = (p[1] & 0x01) != 0;
-    choke_ = p[2];
+    choke_ = p[2] > Gravity::OUTPUT_COUNT ? 0 : p[2];
     for (uint8_t s = 0; s < CVMOD_SLOTS; s++) {
       cvdest_[s] = (CvTarget)constrain((int)p[CVMOD_BASE + s], 0, CV_TARGET_COUNT - 1);
       cvamt_[s] = (int8_t)constrain((int)(int8_t)p[CVMOD_BASE + CVMOD_SLOTS + s], -100, 100);

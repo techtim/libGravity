@@ -169,6 +169,52 @@ void test_cv_targets_clock_mod(void) {
   TEST_ASSERT_EQUAL_INT(clockModValue(5), ch.getClockMod(true));
 }
 
+// CV pulling STEPS down must re-bound HITS and ROTATE even though neither is
+// itself routed. Leaving ROTATE > STEPS-1 made finalize() shift by a negative
+// amount (UB) and let the Bresenham fill every step.
+void test_cv_steps_down_rebounds_hits_and_rotate(void) {
+  Channel ch;
+  ch.editParam(CP_STEPS, 15);  // 16 steps
+  ch.editParam(CP_HITS, 15);   // 16 hits
+  ch.editParam(CP_ROTATE, 15); // rotate 15, legal at 16 steps
+
+  ch.setCvDest(0, CV_STEPS); // only STEPS is modulated
+  ch.setCvAmount(0, -100);
+  ch.applyCvMod(100, 0); // 100>>3 = 12 -> live STEPS = 16 - 12 = 4
+
+  const uint8_t steps = ch.patternSteps();
+  TEST_ASSERT_EQUAL_INT(4, steps);
+  // Every drawn/played step index must be inside the live pattern.
+  uint8_t hits = 0;
+  for (uint8_t i = 0; i < steps; i++)
+    hits += ch.patternHit(i) ? 1 : 0;
+  TEST_ASSERT_TRUE(hits >= 1 && hits <= steps);
+}
+
+// A save record full of 0xFF (corrupt EEPROM, or a slot written by a layout
+// that happened to hash the same) must load fully in range - nothing here may
+// end up as an array index or shift count that is out of bounds.
+void test_load_clamps_corrupt_record(void) {
+  byte p[Channel::SAVE_BYTES];
+  for (uint8_t i = 0; i < Channel::SAVE_BYTES; i++)
+    p[i] = 0xFF;
+
+  Channel ch;
+  ch.load(p);
+
+  TEST_ASSERT_EQUAL_INT(0, ch.getChoke()); // out-of-range source -> off
+  TEST_ASSERT_TRUE(ch.getClockModIndex() >= 0 &&
+                   ch.getClockModIndex() < MOD_CHOICE_SIZE);
+  TEST_ASSERT_TRUE(ch.patternSteps() >= 1 &&
+                   ch.patternSteps() <= MAX_PATTERN_STEPS);
+  TEST_ASSERT_TRUE(ch.paramValue(CP_ROTATE, false) < ch.patternSteps());
+  TEST_ASSERT_TRUE(ch.paramValue(CP_HITS, false) <= ch.patternSteps());
+  for (uint8_t s = 0; s < CVMOD_SLOTS; s++) {
+    TEST_ASSERT_TRUE(ch.getCvDest(s) < CV_TARGET_COUNT);
+    TEST_ASSERT_TRUE(ch.getCvAmount(s) >= -100 && ch.getCvAmount(s) <= 100);
+  }
+}
+
 // A CV routed to HITS must actually change the drawn pattern, not just live_.
 void test_cv_hits_redraws_pattern(void) {
   Channel ch;
@@ -432,6 +478,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_cv_targets_clock_mod);
   RUN_TEST(test_cv_targets_duty_and_prob);
   RUN_TEST(test_cv_hits_redraws_pattern);
+  RUN_TEST(test_load_clamps_corrupt_record);
+  RUN_TEST(test_cv_steps_down_rebounds_hits_and_rotate);
   RUN_TEST(test_save_load_roundtrip);
   RUN_TEST(test_choke_field);
   RUN_TEST(test_pattern_rotate);

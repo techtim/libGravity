@@ -454,7 +454,6 @@ void DisplayMainPage() {
   }
 
   if (show_cv_meter) {
-    // drawCenteredText(g_main, MAIN_TEXT_Y / 2, TEXT_FONT);
     gravity.display.drawStr(12, MAIN_TEXT_Y / 2, g_main);
     drawCvMeter(cv_meter_value, 2, 20, 60, 12);
   } else {
