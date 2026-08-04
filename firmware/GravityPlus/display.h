@@ -120,32 +120,6 @@ constexpr uint8_t CHANNEL_BOXES_Y = 50;
 constexpr uint8_t CHANNEL_BOX_WIDTH = 18;
 constexpr uint8_t CHANNEL_BOX_HEIGHT = 14;
 
-// Menu items for editing global parameters.
-enum ParamsMainPage : uint8_t {
-  PARAM_MAIN_TEMPO,
-  PARAM_MAIN_RUN,
-  PARAM_MAIN_RESET,
-  PARAM_MAIN_SOURCE,
-  PARAM_MAIN_PULSE,
-  PARAM_MAIN_ENCODER_DIR,
-  PARAM_MAIN_ROTATE_DISP,
-  PARAM_MAIN_BTN_MODE,
-  PARAM_MAIN_SAVE_DATA,
-  PARAM_MAIN_LOAD_DATA,
-  PARAM_MAIN_RESET_STATE,
-  PARAM_MAIN_CV1_CAL_LO,
-  PARAM_MAIN_CV1_CAL_ZERO,
-  PARAM_MAIN_CV1_CAL_HI,
-  PARAM_MAIN_CV2_CAL_LO,
-  PARAM_MAIN_CV2_CAL_ZERO,
-  PARAM_MAIN_CV2_CAL_HI,
-  PARAM_MAIN_FACTORY_RESET,
-  PARAM_MAIN_LAST,
-};
-
-// Scratch text buffers. We avoid the Arduino String class here: on AVR it pulls
-// in operator+, number formatting and the heap (~1.5KB of flash). Building the
-// two on-screen lines into fixed buffers keeps the firmware within flash.
 static char g_main[16];
 static char g_sub[20];
 
@@ -218,14 +192,14 @@ inline void copyP(char *dst, size_t n, const __FlashStringHelper *f) {
 }
 
 // Helper function to draw centered text
-void drawCenteredText(const char *text, int y, const uint8_t *font) {
+void drawCenteredText(const char *text, uint8_t y, const uint8_t *font) {
   gravity.display.setFont(font);
   uint8_t textWidth = gravity.display.getStrWidth(text);
   gravity.display.drawStr(SCREEN_CENTER_X - (textWidth / 2), y, text);
 }
 
 // Helper function to draw right-aligned text
-void drawRightAlignedText(const char *text, int y) {
+void drawRightAlignedText(const char *text, uint8_t y) {
   uint8_t textWidth = gravity.display.getStrWidth(text);
   uint8_t drawX = (SCREEN_WIDTH - textWidth) - MENU_BOX_PADDING;
   gravity.display.drawStr(drawX, y, text);
@@ -254,16 +228,17 @@ void drawMainSelection() {
 void drawChannelPattern(const Channel &ch) {
   const uint8_t sz = 5; // px per step
   uint8_t steps = ch.patternSteps();
-  uint8_t x0 = (SCREEN_WIDTH - steps * sz) / 2; // centered on the step count
-  const uint8_t w = steps * sz;
-  gravity.display.setDrawColor(1);
-  gravity.display.drawHLine(x0, sz - 1, w);
-  for (uint8_t i = 0; i <= steps; ++i) {
-    gravity.display.drawVLine(x0 + i * sz, 0, sz);
-    if (i < steps && ch.patternHit(i))
-      gravity.display.drawBox(x0 + i * sz, 0, sz, sz);
+  if (steps != 1) {
+    uint8_t x0 = (SCREEN_WIDTH - steps * sz) / 2; // centered on the step count
+    const uint8_t w = steps * sz;
+    gravity.display.setDrawColor(1);
+    gravity.display.drawHLine(x0, sz - 1, w);
+    for (uint8_t i = 0; i <= steps; ++i) {
+      gravity.display.drawVLine(x0 + i * sz, 0, sz);
+      if (i < steps && ch.patternHit(i))
+        gravity.display.drawBox(x0 + i * sz, 0, sz, sz);
+    }
   }
-  
   const int mod_value = ch.getClockMod(true);
   g_sub[0] = mod_value > 1 ? '/' : 'x';
   itoa(abs(mod_value), g_sub + 1, 10);
@@ -392,6 +367,13 @@ void DisplayMainPage() {
     bool is1 = app.selected_param <= PARAM_MAIN_CV1_CAL_HI;
     cv_meter_value = is1 ? gravity.cv1.Read() : gravity.cv2.Read();
     itoa(app.cv_cal[app.selected_param - PARAM_MAIN_CV1_CAL_LO], g_main, 10); // cal value
+    uint8_t cntr = 0;
+    while (g_main[cntr])
+      ++cntr;
+    g_main[cntr] = ' ';
+    g_main[cntr + 1] = '/';
+    g_main[cntr + 2] = ' ';
+    itoa(cv_meter_value, g_main + cntr + 3, 10);
     show_cv_meter = true; // tune against the live reading
     copyP(g_sub, sizeof(g_sub), mainParamLabel(app.selected_param));
     break;
@@ -415,9 +397,9 @@ void DisplayMainPage() {
     copyP(g_main, sizeof(g_main), F("OUT"));
     switch (app.selected_pulse) {
     case Clock::PULSE_NONE: copyP(g_sub, sizeof(g_sub), F("PULSE OFF")); break;
-    case Clock::PULSE_PPQN_24: copyP(g_sub, sizeof(g_sub), F("24 PPQN PULSE")); break;
-    case Clock::PULSE_PPQN_4: copyP(g_sub, sizeof(g_sub), F("4 PPQN PULSE")); break;
-    case Clock::PULSE_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN PULSE")); break;
+    case Clock::PULSE_PPQN_24: copyP(g_sub, sizeof(g_sub), F("24 PPQN")); break;
+    case Clock::PULSE_PPQN_4: copyP(g_sub, sizeof(g_sub), F("4 PPQN")); break;
+    case Clock::PULSE_PPQN_1: copyP(g_sub, sizeof(g_sub), F("1 PPQN")); break;
     default: break;
     }
     break;
@@ -472,7 +454,8 @@ void DisplayMainPage() {
   }
 
   if (show_cv_meter) {
-    drawCenteredText(g_main, MAIN_TEXT_Y / 2, TEXT_FONT);
+    // drawCenteredText(g_main, MAIN_TEXT_Y / 2, TEXT_FONT);
+    gravity.display.drawStr(12, MAIN_TEXT_Y / 2, g_main);
     drawCvMeter(cv_meter_value, 2, 20, 60, 12);
   } else {
     drawCenteredText(g_main, MAIN_TEXT_Y, LARGE_FONT);
@@ -491,11 +474,9 @@ const __FlashStringHelper *cvTargetLabel(CvTarget t) {
 }
 
 void DisplayChannelPage() {
-  auto &ch = GetSelectedChannel();
-
   gravity.display.setFontMode(1);
-  gravity.display.setDrawColor(2);
 
+  auto &ch = GetSelectedChannel();
   drawChannelPattern(ch);
 
   g_main[0] = '\0';

@@ -164,7 +164,7 @@ void HandleIntClockTick(uint32_t tick) {
 
   // Pulse Out gate.
   if (app.selected_pulse != Clock::PULSE_NONE) {
-    int clock_index;
+    uint8_t clock_index;
     switch (app.selected_pulse) {
     case Clock::PULSE_PPQN_24: clock_index = PULSE_PPQN_24_CLOCK_MOD_INDEX; break;
     case Clock::PULSE_PPQN_4: clock_index = PULSE_PPQN_4_CLOCK_MOD_INDEX; break;
@@ -282,14 +282,20 @@ void ExitEditing() {
 
 // Enter editing mode, preloading toggle-style main params from their value.
 void EnterEditing() {
+  clampSelectedParam();
+
   if (app.selected_channel == 0) {
     switch (app.selected_param) {
     case PARAM_MAIN_ENCODER_DIR:
-      app.selected_sub_param = app.encoder_reversed ? 1 : 0; break;
+      app.selected_sub_param = app.encoder_reversed; break;
     case PARAM_MAIN_ROTATE_DISP:
-      app.selected_sub_param = app.rotate_display ? 1 : 0; break;
+      app.selected_sub_param = app.rotate_display; break;
     case PARAM_MAIN_BTN_MODE:
-      app.selected_sub_param = app.invert_buttons ? 1 : 0; break;
+      app.selected_sub_param = app.invert_buttons; break;
+    case PARAM_MAIN_RUN:
+      app.selected_sub_param = app.cv_run; break;
+    case PARAM_MAIN_RESET:
+      app.selected_sub_param = app.cv_reset; break;
     default:
       break;
     }
@@ -333,11 +339,7 @@ void HandleRotate(int val) {
 
 void HandlePressedRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
-  // Keep the selected param across channels; clamp to the destination page.
-  const uint8_t max_param = pageParamCount();
-  if (app.selected_param >= max_param) {
-    app.selected_param = max_param - 1;
-  }
+  clampSelectedParam();
   stateManager.markDirty();
   app.refresh_screen = true;
 }
@@ -346,7 +348,7 @@ void editMainParameter(int val, bool held) {
   // CV calibration: the six items map 1:1 to cv_cal[] (live edit, held = coarse).
   if (app.selected_param >= PARAM_MAIN_CV1_CAL_LO &&
       app.selected_param <= PARAM_MAIN_CV2_CAL_HI) {
-    app.cv_cal[app.selected_param - PARAM_MAIN_CV1_CAL_LO] += val * 8 * (held ? 5 : 1);
+    app.cv_cal[app.selected_param - PARAM_MAIN_CV1_CAL_LO] += val * 1 * (held ? 8 : 1);
     ApplyCvCal();
     stateManager.markMetadataDirty();
     return;
@@ -427,7 +429,7 @@ void editChannelParameter(int val, bool held) {
       src = (hopped == app.selected_channel) ? prev : hopped; // edge: stay put
     }
     ch.setChoke(src);
-  } else {
+  } else if (app.selected_param >= CP_CV1A && app.selected_param <= CP_CV2B){
     // CV mod slot (CV1-A/B, CV2-A/B). Hold+rotate picks the destination;
     // click+rotate sets the amount (-100..100, negative inverts).
     uint8_t slot = app.selected_param - CP_CV1A;
@@ -445,6 +447,14 @@ void editChannelParameter(int val, bool held) {
 uint8_t pageParamCount() {
   return (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST
                                      : (uint8_t)CP_PARAM_COUNT;
+}
+
+// Keep the selected param across channels; clamp to the destination page.
+void clampSelectedParam() {
+  const uint8_t max_param = pageParamCount();
+  if (app.selected_param >= max_param) {
+    app.selected_param = max_param - 1;
+  }
 }
 
 // Route an edit to whichever page is showing.
@@ -476,7 +486,7 @@ void ApplyCvCal() {
     AnalogInput &cv = i == 0 ? gravity.cv1 : gravity.cv2;
     uint8_t b = i * CAL_PER_INPUT; // [low, offset, high]
     app.cv_cal[b] = constrain(app.cv_cal[b], -1536, -100);
-    app.cv_cal[b + 1] = constrain(app.cv_cal[b + 1], -1536, 1536);
+    app.cv_cal[b + 1] = constrain(app.cv_cal[b + 1], -1024, 1024);
     app.cv_cal[b + 2] = constrain(app.cv_cal[b + 2], 100, 1536);
     cv.SetCalibrationLow(app.cv_cal[b]);
     cv.SetCalibrationHigh(app.cv_cal[b + 2]);

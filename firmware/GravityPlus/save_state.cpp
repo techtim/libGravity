@@ -135,7 +135,7 @@ void StateManager::factoryReset(AppState &app) {
 // Bump on ANY change to the persisted layout that keeps the struct sizes the
 // same - e.g. reordering the gate params. Size changes are caught automatically
 // below; order-only changes are not, so they need this.
-static const uint16_t LAYOUT_REVISION = 5;
+static const uint8_t LAYOUT_REVISION = 5;
 
 // Layout signature: struct sizes + the manual revision. A mismatch forces a
 // one-time factory reset even when the version string is reused.
@@ -185,6 +185,11 @@ void StateManager::_loadState(AppState &app, byte slot_index) {
   // Defensive: never boot onto a non-existent channel page.
   if (app.selected_channel > Gravity::OUTPUT_COUNT)
     app.selected_channel = 0;
+  
+  if (app.selected_param >= 
+    (app.selected_channel == 0 ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT)) {
+    app.selected_param = 0;
+  }
 
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].load(load_data.channel_data[i]);
