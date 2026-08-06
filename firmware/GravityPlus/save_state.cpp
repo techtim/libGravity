@@ -30,6 +30,9 @@ static_assert(sizeof(StateManager::EepromData) * 7 +
                   1024,
               "GravityPlus save data exceeds the ATmega328P 1KB EEPROM");
 
+static_assert(MAX_CHOKE_SOURCE == Gravity::OUTPUT_COUNT,
+              "MAX_CHOKE_SOURCE must be equal Gravity::OUTPUT_COUNT");
+
 // Single shared EEPROM scratch buffer (~80 B). Save and load never overlap, so
 // one static instead of one per function keeps RAM headroom for the stack.
 static StateManager::EepromData eeprom_io;
@@ -135,7 +138,7 @@ void StateManager::factoryReset(AppState &app) {
 // Bump on ANY change to the persisted layout that keeps the struct sizes the
 // same - e.g. reordering the gate params. Size changes are caught automatically
 // below; order-only changes are not, so they need this.
-static const uint16_t LAYOUT_REVISION = 5;
+static const uint8_t LAYOUT_REVISION = 5;
 
 // Layout signature: struct sizes + the manual revision. A mismatch forces a
 // one-time factory reset even when the version string is reused.
@@ -154,7 +157,7 @@ bool StateManager::_isDataValid() {
 }
 
 void StateManager::_saveState(const AppState &app, byte slot_index) {
-  if (app.selected_save_slot >= MAX_SAVE_SLOTS + 1)
+  if (slot_index >= MAX_SAVE_SLOTS + 1)
     return;
 
   EepromData &save_data = eeprom_io;
@@ -185,6 +188,11 @@ void StateManager::_loadState(AppState &app, byte slot_index) {
   // Defensive: never boot onto a non-existent channel page.
   if (app.selected_channel > Gravity::OUTPUT_COUNT)
     app.selected_channel = 0;
+  
+  if (app.selected_param >= 
+    (app.selected_channel == 0 ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT)) {
+    app.selected_param = 0;
+  }
 
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].load(load_data.channel_data[i]);
@@ -199,6 +207,7 @@ void StateManager::_saveMetadata(const AppState &app) {
   current_meta.selected_save_slot = app.selected_save_slot;
   current_meta.encoder_reversed = app.encoder_reversed;
   current_meta.rotate_display = app.rotate_display;
+  current_meta.invert_buttons = app.invert_buttons;
   current_meta.selected_source = static_cast<byte>(app.selected_source);
   current_meta.selected_pulse = static_cast<byte>(app.selected_pulse);
   current_meta.cv_run = app.cv_run;
@@ -212,8 +221,11 @@ void StateManager::_loadMetadata(AppState &app) {
   Metadata metadata;
   EEPROM.get(METADATA_START_ADDR, metadata);
   app.selected_save_slot = metadata.selected_save_slot;
-  app.encoder_reversed = metadata.encoder_reversed;
-  app.rotate_display = metadata.rotate_display;
+  if (app.selected_save_slot >= MAX_SAVE_SLOTS)
+    app.selected_save_slot = 0;
+  app.encoder_reversed = metadata.encoder_reversed != false;
+  app.rotate_display = metadata.rotate_display != false;
+  app.invert_buttons = metadata.invert_buttons != false;
   app.selected_source = static_cast<Clock::Source>(metadata.selected_source);
   app.selected_pulse = static_cast<Clock::Pulse>(metadata.selected_pulse);
   app.cv_run = metadata.cv_run;

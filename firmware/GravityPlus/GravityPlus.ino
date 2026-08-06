@@ -19,6 +19,7 @@
  *      Hold & Rotate: momentary edit of the selected parameter.
  *
  * BTN1 (PLAY):  start / stop the internal clock. SHIFT + PLAY mutes.
+ *               BTN MODE = INVERTED swaps these two.
  * BTN2 (SHIFT): hold and rotate the encoder to change the selected channel.
  *
  * EXT:  external clock in; also acts as a reset when routed via RESTART.
@@ -39,9 +40,14 @@ StateManager stateManager;
 void updateSelection(byte &param, int change, int maxValue);
 void editMainParameter(int val, bool held);
 void editChannelParameter(int val, bool held);
+void editSelectedParameter(int val, bool held);
+uint8_t pageParamCount();
 void InitGravity(AppState &app);
 void ApplyCvCal();
 void ResetOutputs();
+
+// SHIFT state sampled when PLAY goes down. Button fires its handler on release, events can be unsynced
+bool shift_at_play_press = false;
 
 //
 // Arduino setup and loop.
@@ -76,7 +82,15 @@ void setup() {
 }
 
 void loop() {
+  // To react when transport changes with no user input, e.g. MIDI start/stop arrives on serial interrupt
+  static bool was_paused = true;
+
   gravity.Process();
+
+  // Latch the chord on PLAY's press edge; HandlePlayPressed runs on its release.
+  if (gravity.play_button.Change() == Button::CHANGE_PRESSED) {
+    shift_at_play_press = gravity.shift_button.On();
+  }
 
   // Bipolar CV readings reduced to -127..127 (Read() >> 2) so reading * amount
   // stays within a 16-bit int in applyCvMod.
@@ -87,6 +101,9 @@ void loop() {
     auto &ch = app.channel[i];
     if (ch.isCvActive()) {
       ch.applyCvMod(cv1, cv2);
+      if (app.selected_channel == i + 1) {
+        app.refresh_screen = true;
+      }
     }
   }
 
@@ -114,6 +131,15 @@ void loop() {
     gravity.clock.Reset();
   }
 
+  const bool paused = gravity.clock.IsPaused();
+  if (paused != was_paused) {
+    was_paused = paused;
+    if (paused) {
+      ResetOutputs();
+    }
+    app.refresh_screen = true;
+  }
+
   stateManager.update(app);
 
   // Keep the CV signal meter live while a calibration screen is up.
@@ -133,13 +159,9 @@ void loop() {
 //
 
 void HandleIntClockTick(uint32_t tick) {
-  bool refresh = false;
   // Phase 1: decide every channel's output (deferred - no pins written yet).
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].processClockTick(tick, gravity.outputs[i]);
-    if (app.channel[i].isCvActive()) {
-      refresh = true;
-    }
   }
   // Choke: silence any channel whose choke source's gate is high this tick.
   // Snapshot the decided gate states first so the trigger is the source's
@@ -162,7 +184,7 @@ void HandleIntClockTick(uint32_t tick) {
 
   // Pulse Out gate.
   if (app.selected_pulse != Clock::PULSE_NONE) {
-    int clock_index;
+    uint8_t clock_index;
     switch (app.selected_pulse) {
     case Clock::PULSE_PPQN_24: clock_index = PULSE_PPQN_24_CLOCK_MOD_INDEX; break;
     case Clock::PULSE_PPQN_4: clock_index = PULSE_PPQN_4_CLOCK_MOD_INDEX; break;
@@ -170,16 +192,13 @@ void HandleIntClockTick(uint32_t tick) {
     }
     const uint16_t pulse_high_ticks =
         pgm_read_word_near(&CLOCK_MOD_PULSES[clock_index]);
-    const uint32_t pulse_low_ticks = tick + max((pulse_high_ticks / 2), 1L);
-    if (tick % pulse_high_ticks == 0) {
+    const uint16_t low_at = max(pulse_high_ticks / 2, 1);
+    const uint16_t phase = tick % pulse_high_ticks;
+    if (phase == 0) {
       gravity.pulse.High();
-    } else if (pulse_low_ticks % pulse_high_ticks == 0) {
+    } else if (phase == pulse_high_ticks - low_at) {
       gravity.pulse.Low();
     }
-  }
-
-  if (!app.editing_param) {
-    app.refresh_screen |= refresh;
   }
 }
 
@@ -205,7 +224,7 @@ void HandleExtClockTick() {
 //
 
 void HandlePlayPressed() {
-  if (gravity.shift_button.On()) {
+  if (shift_at_play_press != app.invert_buttons) {
     if (app.selected_channel == 0) {
       for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
         app.channel[i].toggleMute();
@@ -234,6 +253,10 @@ void ExitEditing() {
     case PARAM_MAIN_ROTATE_DISP:
       app.rotate_display = app.selected_sub_param == 1;
       gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
+      stateManager.markMetadataDirty();
+      break;
+    case PARAM_MAIN_BTN_MODE:
+      app.invert_buttons = app.selected_sub_param == 1;
       stateManager.markMetadataDirty();
       break;
     case PARAM_MAIN_SAVE_DATA:
@@ -279,12 +302,20 @@ void ExitEditing() {
 
 // Enter editing mode, preloading toggle-style main params from their value.
 void EnterEditing() {
+  clampSelectedParam();
+
   if (app.selected_channel == 0) {
     switch (app.selected_param) {
     case PARAM_MAIN_ENCODER_DIR:
-      app.selected_sub_param = app.encoder_reversed ? 1 : 0; break;
+      app.selected_sub_param = app.encoder_reversed; break;
     case PARAM_MAIN_ROTATE_DISP:
-      app.selected_sub_param = app.rotate_display ? 1 : 0; break;
+      app.selected_sub_param = app.rotate_display; break;
+    case PARAM_MAIN_BTN_MODE:
+      app.selected_sub_param = app.invert_buttons; break;
+    case PARAM_MAIN_RUN:
+      app.selected_sub_param = app.cv_run; break;
+    case PARAM_MAIN_RESET:
+      app.selected_sub_param = app.cv_reset; break;
     default:
       break;
     }
@@ -303,11 +334,7 @@ void HandleEncoderHeldRotate(int val) {
   if (!app.editing_param) {
     EnterEditing();
   }
-  if (app.selected_channel == 0) {
-    editMainParameter(val, /*held=*/true);
-  } else {
-    editChannelParameter(val, /*held=*/true); // hold+rotate -> CV destination
-  }
+  editSelectedParameter(val, /*held=*/true); // hold+rotate -> CV destination
   app.refresh_screen = true;
 }
 
@@ -323,27 +350,16 @@ void HandleRotate(int val) {
     return;
   }
   if (!app.editing_param) {
-    const uint8_t max_param =
-        (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT;
-    updateSelection(app.selected_param, val, max_param);
+    updateSelection(app.selected_param, val, pageParamCount());
   } else {
-    if (app.selected_channel == 0) {
-      editMainParameter(val, /*held=*/false);
-    } else {
-      editChannelParameter(val, /*held=*/false); // click+rotate -> CV amount
-    }
+    editSelectedParameter(val, /*held=*/false); // click+rotate -> CV amount
   }
   app.refresh_screen = true;
 }
 
 void HandlePressedRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
-  // Keep the selected param across channels; clamp to the destination page.
-  const uint8_t max_param =
-      (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT;
-  if (app.selected_param >= max_param) {
-    app.selected_param = max_param - 1;
-  }
+  clampSelectedParam();
   stateManager.markDirty();
   app.refresh_screen = true;
 }
@@ -352,7 +368,7 @@ void editMainParameter(int val, bool held) {
   // CV calibration: the six items map 1:1 to cv_cal[] (live edit, held = coarse).
   if (app.selected_param >= PARAM_MAIN_CV1_CAL_LO &&
       app.selected_param <= PARAM_MAIN_CV2_CAL_HI) {
-    app.cv_cal[app.selected_param - PARAM_MAIN_CV1_CAL_LO] += val * 8 * (held ? 5 : 1);
+    app.cv_cal[app.selected_param - PARAM_MAIN_CV1_CAL_LO] += val * 1 * (held ? 8 : 1);
     ApplyCvCal();
     stateManager.markMetadataDirty();
     return;
@@ -397,6 +413,7 @@ void editMainParameter(int val, bool held) {
   // Applied on encoder button press.
   case PARAM_MAIN_ENCODER_DIR:
   case PARAM_MAIN_ROTATE_DISP:
+  case PARAM_MAIN_BTN_MODE:
   case PARAM_MAIN_RESET_STATE:
   case PARAM_MAIN_FACTORY_RESET:
     updateSelection(app.selected_sub_param, val, 2);
@@ -432,7 +449,7 @@ void editChannelParameter(int val, bool held) {
       src = (hopped == app.selected_channel) ? prev : hopped; // edge: stay put
     }
     ch.setChoke(src);
-  } else {
+  } else if (app.selected_param >= CP_CV1A && app.selected_param <= CP_CV2B){
     // CV mod slot (CV1-A/B, CV2-A/B). Hold+rotate picks the destination;
     // click+rotate sets the amount (-100..100, negative inverts).
     uint8_t slot = app.selected_param - CP_CV1A;
@@ -443,6 +460,29 @@ void editChannelParameter(int val, bool held) {
     } else {
       ch.setCvAmount(slot, ch.getCvAmount(slot) + val);
     }
+  }
+}
+
+// Number of menu rows on the page currently shown.
+uint8_t pageParamCount() {
+  return (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST
+                                     : (uint8_t)CP_PARAM_COUNT;
+}
+
+// Keep the selected param across channels; clamp to the destination page.
+void clampSelectedParam() {
+  const uint8_t max_param = pageParamCount();
+  if (app.selected_param >= max_param) {
+    app.selected_param = max_param - 1;
+  }
+}
+
+// Route an edit to whichever page is showing.
+void editSelectedParameter(int val, bool held) {
+  if (app.selected_channel == 0) {
+    editMainParameter(val, held);
+  } else {
+    editChannelParameter(val, held);
   }
 }
 
@@ -465,9 +505,9 @@ void ApplyCvCal() {
   for (uint8_t i = 0; i < 2; i++) {
     AnalogInput &cv = i == 0 ? gravity.cv1 : gravity.cv2;
     uint8_t b = i * CAL_PER_INPUT; // [low, offset, high]
-    app.cv_cal[b] = constrain(app.cv_cal[b], -1024, -100);
+    app.cv_cal[b] = constrain(app.cv_cal[b], -1536, -100);
     app.cv_cal[b + 1] = constrain(app.cv_cal[b + 1], -1024, 1024);
-    app.cv_cal[b + 2] = constrain(app.cv_cal[b + 2], 100, 1024);
+    app.cv_cal[b + 2] = constrain(app.cv_cal[b + 2], 100, 1536);
     cv.SetCalibrationLow(app.cv_cal[b]);
     cv.SetCalibrationHigh(app.cv_cal[b + 2]);
     cv.AdjustOffset(app.cv_cal[b + 1] - cv.GetOffset());

@@ -22,6 +22,7 @@
 #include "digital_output.h"
 
 static constexpr uint8_t MAX_PATTERN_STEPS = 16; // pattern bitmap fits a uint16_t
+static constexpr uint8_t MAX_CHOKE_SOURCE = 6; // matches Gravity::OUTPUT_COUNT
 
 // One enum for every channel-page item, in UI order: clock mod, the seven
 // pattern/gate params (STEPS..SWING, the ones stored per channel in base_/live_),
@@ -49,9 +50,7 @@ static constexpr uint8_t CP_MOD_FIRST = CP_STEPS;
 static constexpr uint8_t CP_MOD_LAST = CP_SWING;
 static constexpr uint8_t CP_MOD_COUNT = CP_MOD_LAST - CP_MOD_FIRST + 1;
 
-// Four CV modulation slots per channel: CV1-A, CV1-B (both read CV1) and
-// CV2-A, CV2-B (both read CV2). Each has a destination + signed amount.
-static constexpr uint8_t CVMOD_SLOTS = 4;
+static constexpr uint8_t CVMOD_SLOTS = 4; // CV1-A, CV1-B (read CV1) and CV2-A, CV2-B (read CV2)
 
 // CV routing targets. CV_STEPS..CV_SWING align 1:1 with CP_STEPS..CP_SWING, so
 // the target for gate param cp is CV_STEPS + (cp - GATE_FIRST).
@@ -110,28 +109,7 @@ public:
     finalize();
   }
 
-  // Label for any channel-page item (indexed by ChannelPageParam). Single source
-  // of truth for the channel-page strings.
-  static const __FlashStringHelper *paramLabel(uint8_t i) {
-    switch (i) {
-    case CP_CLOCK_MOD: return F("CLOCK MOD");
-    case CP_STEPS: return F("STEPS");
-    case CP_HITS: return F("HITS");
-    case CP_ROTATE: return F("ROTATE");
-    case CP_PROB: return F("PROBAB");
-    case CP_DUTY: return F("DUTY");
-    case CP_OFFSET: return F("OFFSET");
-    case CP_SWING: return F("SWING");
-    case CP_CHOKE: return F("CHOKE");
-    case CP_CV1A: return F("CV1-A");
-    case CP_CV1B: return F("CV1-B");
-    case CP_CV2A: return F("CV2-A");
-    default: return F("CV2-B");
-    }
-  }
-
-  // Value to show for param i: the modulated value when a CV drives it (and not
-  // editing), otherwise the base value.
+  // Value to show for param i: the modulated value when a CV drives it (and not editing), otherwise the base value.
   uint8_t paramValue(uint8_t i, bool withCvMod) const {
     return (withCvMod && targetsParam((ChannelPageParam)i)) ? live_[i] : base_[i];
   }
@@ -193,7 +171,6 @@ public:
   void setChoke(uint8_t source) { choke_ = source; }
   uint8_t getChoke() const { return choke_; }
 
-  // --- Pattern view (for the UI) ---
   uint8_t patternSteps() const { return live_[CP_STEPS]; }
   bool patternHit(uint8_t i) const { return (pattern_ & (1U << i)) != 0; }
 
@@ -233,9 +210,8 @@ public:
               : (static_cast<int>(in[s]) * cvamt_[s]) / 128;
         }
       }
-      if (amt != 0) {
-        live_[i] = clampParam(i, base_[i] + amt, live_[CP_STEPS]);
-      }
+      // Always clamp to protect from overflow
+      live_[i] = clampParam(i, base_[i] + amt, live_[CP_STEPS]);
     }
     finalize();
   }
@@ -306,7 +282,7 @@ public:
   void load(const byte *p) {
     base_clock_mod_ = constrain((int)p[0], 0, MOD_CHOICE_SIZE - 1);
     mute_ = (p[1] & 0x01) != 0;
-    choke_ = p[2];
+    choke_ = p[2] > MAX_CHOKE_SOURCE ? 0 : p[2];
     for (uint8_t s = 0; s < CVMOD_SLOTS; s++) {
       cvdest_[s] = (CvTarget)constrain((int)p[CVMOD_BASE + s], 0, CV_TARGET_COUNT - 1);
       cvamt_[s] = (int8_t)constrain((int)(int8_t)p[CVMOD_BASE + CVMOD_SLOTS + s], -100, 100);
@@ -393,9 +369,8 @@ private:
       pattern_ = rotated;
     }
 
-    // Gate edge phases. The gate opens `offset` into the step and closes after
-    // `duty` of the step; swing pushes both later on odd steps. Precomputing
-    // these makes process() a pair of phase compares (no 32-bit modulo).
+    // Gate edge phases. The gate opens `offset` into the step and closes after swing pushes both later on odd steps.
+    // Precomputing these makes process() a pair of phase compares (no 32-bit modulo).
     const uint16_t duty_pulses = max(static_cast<int32_t>(mod_pulses_) * (100 - live_[CP_DUTY]) / 100, 1);
     const uint16_t offset_pulses = static_cast<int32_t>(mod_pulses_) * (100 - live_[CP_OFFSET]) / 100;
     swing_pulses_ =
