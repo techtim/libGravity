@@ -30,6 +30,9 @@ static_assert(sizeof(StateManager::EepromData) * 7 +
                   1024,
               "GravityPlus save data exceeds the ATmega328P 1KB EEPROM");
 
+static_assert(MAX_CHOKE_SOURCE == Gravity::OUTPUT_COUNT,
+              "MAX_CHOKE_SOURCE must be equal Gravity::OUTPUT_COUNT");
+
 // Single shared EEPROM scratch buffer (~80 B). Save and load never overlap, so
 // one static instead of one per function keeps RAM headroom for the stack.
 static StateManager::EepromData eeprom_io;

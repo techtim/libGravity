@@ -18,12 +18,11 @@
 
 #include <Arduino.h>
 
-#include <libGravity.h>
-
 #include "clock_mod.h"
 #include "digital_output.h"
 
 static constexpr uint8_t MAX_PATTERN_STEPS = 16; // pattern bitmap fits a uint16_t
+static constexpr uint8_t MAX_CHOKE_SOURCE = 6; // matches Gravity::OUTPUT_COUNT
 
 // One enum for every channel-page item, in UI order: clock mod, the seven
 // pattern/gate params (STEPS..SWING, the ones stored per channel in base_/live_),
@@ -51,9 +50,7 @@ static constexpr uint8_t CP_MOD_FIRST = CP_STEPS;
 static constexpr uint8_t CP_MOD_LAST = CP_SWING;
 static constexpr uint8_t CP_MOD_COUNT = CP_MOD_LAST - CP_MOD_FIRST + 1;
 
-// Four CV modulation slots per channel: CV1-A, CV1-B (both read CV1) and
-// CV2-A, CV2-B (both read CV2). Each has a destination + signed amount.
-static constexpr uint8_t CVMOD_SLOTS = 4;
+static constexpr uint8_t CVMOD_SLOTS = 4; // CV1-A, CV1-B (read CV1) and CV2-A, CV2-B (read CV2)
 
 // CV routing targets. CV_STEPS..CV_SWING align 1:1 with CP_STEPS..CP_SWING, so
 // the target for gate param cp is CV_STEPS + (cp - GATE_FIRST).
@@ -285,7 +282,7 @@ public:
   void load(const byte *p) {
     base_clock_mod_ = constrain((int)p[0], 0, MOD_CHOICE_SIZE - 1);
     mute_ = (p[1] & 0x01) != 0;
-    choke_ = p[2] > Gravity::OUTPUT_COUNT ? 0 : p[2];
+    choke_ = p[2] > MAX_CHOKE_SOURCE ? 0 : p[2];
     for (uint8_t s = 0; s < CVMOD_SLOTS; s++) {
       cvdest_[s] = (CvTarget)constrain((int)p[CVMOD_BASE + s], 0, CV_TARGET_COUNT - 1);
       cvamt_[s] = (int8_t)constrain((int)(int8_t)p[CVMOD_BASE + CVMOD_SLOTS + s], -100, 100);

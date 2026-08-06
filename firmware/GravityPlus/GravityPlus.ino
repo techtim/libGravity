@@ -46,6 +46,9 @@ void InitGravity(AppState &app);
 void ApplyCvCal();
 void ResetOutputs();
 
+// SHIFT state sampled when PLAY goes down. Button fires its handler on release, events can be unsynced
+bool shift_at_play_press = false;
+
 //
 // Arduino setup and loop.
 //
@@ -79,7 +82,15 @@ void setup() {
 }
 
 void loop() {
+  // To react when transport changes with no user input, e.g. MIDI start/stop arrives on serial interrupt
+  static bool was_paused = true;
+
   gravity.Process();
+
+  // Latch the chord on PLAY's press edge; HandlePlayPressed runs on its release.
+  if (gravity.play_button.Change() == Button::CHANGE_PRESSED) {
+    shift_at_play_press = gravity.shift_button.On();
+  }
 
   // Bipolar CV readings reduced to -127..127 (Read() >> 2) so reading * amount
   // stays within a 16-bit int in applyCvMod.
@@ -118,6 +129,15 @@ void loop() {
     // pattern to step 0).
     ResetOutputs();
     gravity.clock.Reset();
+  }
+
+  const bool paused = gravity.clock.IsPaused();
+  if (paused != was_paused) {
+    was_paused = paused;
+    if (paused) {
+      ResetOutputs();
+    }
+    app.refresh_screen = true;
   }
 
   stateManager.update(app);
@@ -204,7 +224,7 @@ void HandleExtClockTick() {
 //
 
 void HandlePlayPressed() {
-  if (gravity.shift_button.On() != app.invert_buttons) {
+  if (shift_at_play_press != app.invert_buttons) {
     if (app.selected_channel == 0) {
       for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
         app.channel[i].toggleMute();
