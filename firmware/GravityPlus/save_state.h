@@ -17,10 +17,11 @@ struct AppState;
 
 class StateManager {
 public:
+  static constexpr byte MAX_SAVE_SLOTS = 6;
+  static constexpr byte TRANSIENT_SLOT = MAX_SAVE_SLOTS;
+
   static const char SKETCH_NAME[];
   static const char SEMANTIC_VERSION[];
-  static const byte MAX_SAVE_SLOTS;
-  static const byte TRANSIENT_SLOT;
 
   StateManager();
 

@@ -566,6 +566,7 @@ void DisplaySelectedChannel() {
 }
 
 void UpdateDisplay() {
+  ClampSelection(app);
   app.refresh_screen = false;
   gravity.display.firstPage();
   do {

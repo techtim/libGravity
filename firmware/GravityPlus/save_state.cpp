@@ -13,11 +13,6 @@ const char StateManager::SKETCH_NAME[] = "GRAVITY PLUS";
 // Bumped for per-channel choke + per-input CV calibration (one-time reset).
 const char StateManager::SEMANTIC_VERSION[] = "V3.1.0";
 
-// Reduced from 10 to 6 to fit the 4-slot CV routing (bigger per-channel record)
-// within the 1 KB EEPROM. Slots display as A1-A3 / B1-B3.
-const byte StateManager::MAX_SAVE_SLOTS = 6;
-const byte StateManager::TRANSIENT_SLOT = 6;
-
 const unsigned long StateManager::SAVE_DELAY_MS = 2000;
 
 const int StateManager::METADATA_START_ADDR = 0;
@@ -185,14 +180,7 @@ void StateManager::_loadState(AppState &app, byte slot_index) {
   app.tempo = load_data.tempo;
   app.selected_param = load_data.selected_param;
   app.selected_channel = load_data.selected_channel;
-  // Defensive: never boot onto a non-existent channel page.
-  if (app.selected_channel > Gravity::OUTPUT_COUNT)
-    app.selected_channel = 0;
-  
-  if (app.selected_param >= 
-    (app.selected_channel == 0 ? (uint8_t)PARAM_MAIN_LAST : (uint8_t)CP_PARAM_COUNT)) {
-    app.selected_param = 0;
-  }
+  ClampSelection(app);
 
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     app.channel[i].load(load_data.channel_data[i]);
