@@ -18,11 +18,11 @@ const unsigned long StateManager::SAVE_DELAY_MS = 2000;
 const int StateManager::METADATA_START_ADDR = 0;
 const int StateManager::EEPROM_DATA_START_ADDR = sizeof(StateManager::Metadata);
 
-// The Nano's ATmega328P has 1 KB of EEPROM. Fail the build if the save data
-// (MAX_SAVE_SLOTS + transient + metadata) ever overflows it. 7 = 6 slots + 1.
-static_assert(sizeof(StateManager::EepromData) * 7 +
-                      sizeof(StateManager::Metadata) <=
-                  1024,
+// The Nano's ATmega328P has 1 KB of EEPROM, and EEAR is only 10 bits wide - an
+// address past 1023 wraps back onto the metadata at 0 instead of failing
+// Check (MAX_SAVE_SLOTS + transient + metadata) ever overflows it
+static_assert(sizeof(StateManager::EepromData) * (StateManager::MAX_SAVE_SLOTS + 1)
+              + sizeof(StateManager::Metadata) <= 1024,
               "GravityPlus save data exceeds the ATmega328P 1KB EEPROM");
 
 static_assert(MAX_CHOKE_SOURCE == Gravity::OUTPUT_COUNT,

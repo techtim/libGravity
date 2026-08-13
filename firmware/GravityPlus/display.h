@@ -419,20 +419,22 @@ void DisplayMainPage() {
     break;
   }
   case PARAM_MAIN_SAVE_DATA:
-  case PARAM_MAIN_LOAD_DATA:
-    if (app.selected_sub_param == StateManager::MAX_SAVE_SLOTS) {
+  case PARAM_MAIN_LOAD_DATA: {
+    const byte slot = app.editing_param ? app.selected_sub_param : app.selected_save_slot;
+    if (slot == StateManager::MAX_SAVE_SLOTS) {
       copyP(g_main, sizeof(g_main), F("x"));
       copyP(g_sub, sizeof(g_sub), F("BACK TO MAIN"));
     } else {
-      if (app.selected_sub_param == app.selected_save_slot) {
+      if (slot == app.selected_save_slot) {
         solidTick();
       }
-      displaySaveSlot(g_main, app.selected_sub_param);
+      displaySaveSlot(g_main, slot);
       copyP(g_sub, sizeof(g_sub),
             (app.selected_param == PARAM_MAIN_SAVE_DATA) ? F("SAVE TO SLOT")
                                                          : F("LOAD FROM SLOT"));
     }
     break;
+  }
   case PARAM_MAIN_RESET_STATE:
     if (app.selected_sub_param == 0) {
       copyP(g_main, sizeof(g_main), F("RST"));

@@ -315,6 +315,9 @@ void EnterEditing() {
       app.selected_sub_param = app.cv_run; break;
     case PARAM_MAIN_RESET:
       app.selected_sub_param = app.cv_reset; break;
+    case PARAM_MAIN_SAVE_DATA:
+    case PARAM_MAIN_LOAD_DATA:
+      app.selected_sub_param = app.selected_save_slot; break;
     default:
       break;
     }
