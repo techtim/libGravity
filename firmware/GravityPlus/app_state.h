@@ -91,6 +91,18 @@ inline void ResetAppState(AppState &app) {
 
 extern AppState app;
 
+inline uint8_t PageParamCount(const AppState &a) {
+  return (a.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST
+                                   : (uint8_t)CP_PARAM_COUNT;
+}
+
+inline void ClampSelection(AppState &a) {
+  if (a.selected_channel > Gravity::OUTPUT_COUNT)
+    a.selected_channel = 0;
+  if (a.selected_param >= PageParamCount(a))
+    a.selected_param = 0;
+}
+
 inline Channel &GetSelectedChannel() {
   return app.channel[app.selected_channel - 1];
 }

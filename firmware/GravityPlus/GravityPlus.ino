@@ -41,7 +41,6 @@ void updateSelection(byte &param, int change, int maxValue);
 void editMainParameter(int val, bool held);
 void editChannelParameter(int val, bool held);
 void editSelectedParameter(int val, bool held);
-uint8_t pageParamCount();
 void InitGravity(AppState &app);
 void ApplyCvCal();
 void ResetOutputs();
@@ -302,7 +301,7 @@ void ExitEditing() {
 
 // Enter editing mode, preloading toggle-style main params from their value.
 void EnterEditing() {
-  clampSelectedParam();
+  ClampSelection(app);
 
   if (app.selected_channel == 0) {
     switch (app.selected_param) {
@@ -316,6 +315,9 @@ void EnterEditing() {
       app.selected_sub_param = app.cv_run; break;
     case PARAM_MAIN_RESET:
       app.selected_sub_param = app.cv_reset; break;
+    case PARAM_MAIN_SAVE_DATA:
+    case PARAM_MAIN_LOAD_DATA:
+      app.selected_sub_param = app.selected_save_slot; break;
     default:
       break;
     }
@@ -334,7 +336,7 @@ void HandleEncoderHeldRotate(int val) {
   if (!app.editing_param) {
     EnterEditing();
   }
-  editSelectedParameter(val, /*held=*/true); // hold+rotate -> CV destination
+  editSelectedParameter(val > 0 ? 1 : -1, /*held=*/true);
   app.refresh_screen = true;
 }
 
@@ -346,20 +348,20 @@ void HandleEncoderReleasedAfterRotate() {
 
 void HandleRotate(int val) {
   if (gravity.shift_button.On()) {
-    HandlePressedRotate(val);
+    HandleShiftRotate(val);
     return;
   }
   if (!app.editing_param) {
-    updateSelection(app.selected_param, val, pageParamCount());
+    updateSelection(app.selected_param, val, PageParamCount(app));
   } else {
     editSelectedParameter(val, /*held=*/false); // click+rotate -> CV amount
   }
   app.refresh_screen = true;
 }
 
-void HandlePressedRotate(int val) {
+void HandleShiftRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
-  clampSelectedParam();
+  ClampSelection(app);
   stateManager.markDirty();
   app.refresh_screen = true;
 }
@@ -460,20 +462,6 @@ void editChannelParameter(int val, bool held) {
     } else {
       ch.setCvAmount(slot, ch.getCvAmount(slot) + val);
     }
-  }
-}
-
-// Number of menu rows on the page currently shown.
-uint8_t pageParamCount() {
-  return (app.selected_channel == 0) ? (uint8_t)PARAM_MAIN_LAST
-                                     : (uint8_t)CP_PARAM_COUNT;
-}
-
-// Keep the selected param across channels; clamp to the destination page.
-void clampSelectedParam() {
-  const uint8_t max_param = pageParamCount();
-  if (app.selected_param >= max_param) {
-    app.selected_param = max_param - 1;
   }
 }
 
