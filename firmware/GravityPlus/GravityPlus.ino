@@ -48,6 +48,44 @@ void ResetOutputs();
 // SHIFT state sampled when PLAY goes down. Button fires its handler on release, events can be unsynced
 bool shift_at_play_press = false;
 
+// Which channels currently have a MIDI note sounding (bit per channel). 
+// Written by the clock ISR and by the UI, hence volatile + the guarded read-modify-writes below.
+volatile uint8_t midi_notes_on = 0;
+
+void SendMidiNote(uint8_t channel, uint8_t note, bool on) {
+  NeoSerial.write((uint8_t)((on ? 0x90 : 0x80) | (channel - 1)));
+  NeoSerial.write(note);
+  NeoSerial.write((uint8_t)(on ? 100 : 0));
+}
+
+// Release channel i's sounding note, if any, using its CURRENT channel/note.
+// Callable from either context: SREG is saved and restored rather than blindly
+// re-enabling interrupts, since ResetOutputs() reaches here from the ISR too.
+void ReleaseChannelNote(uint8_t i) {
+  const uint8_t bit = 1 << i;
+  const uint8_t sreg = SREG;
+  cli();
+  const bool sounding = (midi_notes_on & bit) != 0;
+  midi_notes_on &= ~bit;
+  SREG = sreg;
+  if (!sounding) {
+    return;
+  }
+  const uint8_t mch = app.channel[i].getMidiChannel();
+  if (mch != MIDI_CH_OFF) {
+    SendMidiNote(mch, app.channel[i].getMidiNote(), false);
+  }
+}
+
+void AllMidiNotesOff() {
+  if (midi_notes_on == 0) {
+    return;
+  }
+  for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+    ReleaseChannelNote(i);
+  }
+}
+
 //
 // Arduino setup and loop.
 //
@@ -179,6 +217,22 @@ void HandleIntClockTick(uint32_t tick) {
   // Phase 2: write all six pins together so the channels update in lockstep.
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gravity.outputs[i].Flush();
+  }
+
+  if (app.midi_out == MIDI_OUT_NOTE || app.midi_out == MIDI_OUT_NOTE_CLK) {
+    for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
+      const uint8_t mch = app.channel[i].getMidiChannel();
+      if (mch == MIDI_CH_OFF) {
+        continue;
+      }
+      const uint8_t bit = 1 << i;
+      const bool sounding = (midi_notes_on & bit) != 0;
+      const bool gate = gravity.outputs[i].On();
+      if (gate != sounding) {
+        SendMidiNote(mch, app.channel[i].getMidiNote(), gate);
+        midi_notes_on = gate ? (midi_notes_on | bit) : (midi_notes_on & ~bit);
+      }
+    }
   }
 
   // Pulse Out gate.
@@ -315,6 +369,8 @@ void EnterEditing() {
       app.selected_sub_param = app.cv_run; break;
     case PARAM_MAIN_RESET:
       app.selected_sub_param = app.cv_reset; break;
+    case PARAM_MAIN_MIDI_OUT:
+      app.selected_sub_param = app.midi_out; break;
     case PARAM_MAIN_SAVE_DATA:
     case PARAM_MAIN_LOAD_DATA:
       app.selected_sub_param = app.selected_save_slot; break;
@@ -402,6 +458,14 @@ void editMainParameter(int val, bool held) {
     stateManager.markMetadataDirty();
     break;
   }
+  case PARAM_MAIN_MIDI_OUT:
+    // Release anything sounding before the setting changes - this is the last chance to send note-offs.
+    AllMidiNotesOff();
+    updateSelection(app.selected_sub_param, val, MIDI_OUT_LAST);
+    app.midi_out = app.selected_sub_param;
+    gravity.clock.SetMidiClockOut(app.midi_out == MIDI_OUT_CLK || app.midi_out == MIDI_OUT_NOTE_CLK);
+    stateManager.markMetadataDirty();
+    break;
   case PARAM_MAIN_PULSE: {
     byte pulse = static_cast<byte>(app.selected_pulse);
     updateSelection(pulse, val, Clock::PULSE_LAST);
@@ -451,6 +515,14 @@ void editChannelParameter(int val, bool held) {
       src = (hopped == app.selected_channel) ? prev : hopped; // edge: stay put
     }
     ch.setChoke(src);
+  } else if (app.selected_param == CP_MIDI_CH || app.selected_param == CP_MIDI_NOTE) {
+    // Release first, while the old channel/note are still there to send the note-off
+    ReleaseChannelNote(app.selected_channel - 1);
+    if (app.selected_param == CP_MIDI_CH) {
+      ch.setMidiChannel(ch.getMidiChannel() + val);
+    } else {
+      ch.setMidiNote(ch.getMidiNote() + val);
+    }
   } else if (app.selected_param >= CP_CV1A && app.selected_param <= CP_CV2B){
     // CV mod slot (CV1-A/B, CV2-A/B). Hold+rotate picks the destination;
     // click+rotate sets the amount (-100..100, negative inverts).
@@ -505,6 +577,7 @@ void ApplyCvCal() {
 void InitGravity(AppState &app) {
   gravity.clock.SetTempo(app.tempo);
   gravity.clock.SetSource(app.selected_source);
+  gravity.clock.SetMidiClockOut(app.midi_out == MIDI_OUT_CLK || app.midi_out == MIDI_OUT_NOTE_CLK );
   gravity.encoder.SetReverseDirection(app.encoder_reversed);
   gravity.display.setFlipMode(app.rotate_display ? 1 : 0);
   ApplyCvCal();
@@ -515,4 +588,5 @@ void ResetOutputs() {
     gravity.outputs[i].Low();
     gravity.outputs[i].Flush(); // outputs are deferred; write the low now
   }
+  AllMidiNotesOff();
 }

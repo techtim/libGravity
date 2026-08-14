@@ -57,10 +57,7 @@ public:
     uClock.setOutputPPQN(uClock.PPQN_96);
     uClock.setTempo(DEFAULT_TEMPO);
 
-    // MIDI events.
-    uClock.setOnClockStart(sendMIDIStart);
-    uClock.setOnClockStop(sendMIDIStop);
-    uClock.setOnSync24(sendMIDIClock);
+    SetMidiClockOut(true);
 
     uClock.start();
   }
@@ -159,6 +156,19 @@ public:
   // Returns true if the clock is not running.
   bool IsPaused() { return uClock.clock_state == uClock.PAUSED; }
 
+  // Enable / disable the outgoing MIDI clock, start and stop bytes.
+  void SetMidiClockOut(bool on) { 
+    if (on) {
+      uClock.setOnClockStart(sendMIDIStart);
+      uClock.setOnClockStop(sendMIDIStop);
+      uClock.setOnSync24(sendMIDIClock);
+    } else {
+      uClock.setOnClockStart(nullptr);
+      uClock.setOnClockStop(nullptr);
+      uClock.setOnSync24(nullptr);
+    }
+  }
+
 private:
   Source source_ = SOURCE_INTERNAL;
 
@@ -182,11 +192,17 @@ private:
     return true;
   }
 
-  static void sendMIDIStart() { NeoSerial.write(MIDI_START); }
+  static void sendMIDIStart() {
+    NeoSerial.write(MIDI_START);
+  }
 
-  static void sendMIDIStop() { NeoSerial.write(MIDI_STOP); }
+  static void sendMIDIStop() {
+    NeoSerial.write(MIDI_STOP);
+  }
 
-  static void sendMIDIClock(uint32_t tick) { NeoSerial.write(MIDI_CLOCK); }
+  static void sendMIDIClock(uint32_t tick) {
+    NeoSerial.write(MIDI_CLOCK);
+  }
 };
 
 #endif

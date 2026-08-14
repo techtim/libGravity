@@ -16,6 +16,7 @@ enum ParamsMainPage : uint8_t {
   PARAM_MAIN_RESET,
   PARAM_MAIN_SOURCE,
   PARAM_MAIN_PULSE,
+  PARAM_MAIN_MIDI_OUT,
   PARAM_MAIN_ENCODER_DIR,
   PARAM_MAIN_ROTATE_DISP,
   PARAM_MAIN_BTN_MODE,
@@ -41,6 +42,15 @@ enum CvReset : uint8_t {
   CV_RESET_LAST, // number of choices
 };
 
+// What goes out of the MIDI port, in menu order.
+enum MidiOut : uint8_t {
+  MIDI_OUT_OFF,      // nothing
+  MIDI_OUT_CLK,      // clock / start / stop only
+  MIDI_OUT_NOTE_CLK, // both
+  MIDI_OUT_NOTE,     // per-channel notes only
+  MIDI_OUT_LAST,
+};
+
 // Global state for settings and app behavior.
 struct AppState {
   int tempo = Clock::DEFAULT_TEMPO;
@@ -53,6 +63,7 @@ struct AppState {
   Clock::Pulse selected_pulse = Clock::PULSE_PPQN_24;
   byte cv_run = 0;               // 0 = none, 1 = CV1 gate, 2 = CV2 gate
   byte cv_reset = CV_RESET_NONE; // see CvReset
+  byte midi_out = MIDI_OUT_CLK;  // see MidiOut
   bool editing_param = false;
   bool encoder_reversed = true;
   bool rotate_display = false;
@@ -75,6 +86,7 @@ inline void ResetAppState(AppState &app) {
   app.selected_pulse = Clock::PULSE_PPQN_24;
   app.cv_run = 0;
   app.cv_reset = CV_RESET_NONE;
+  app.midi_out = MIDI_OUT_CLK; // clock out was the pre-MIDI-note behaviour
   app.encoder_reversed = true;
   app.rotate_display = false;
   app.invert_buttons = false;

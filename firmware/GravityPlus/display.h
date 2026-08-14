@@ -47,54 +47,45 @@ const uint8_t TEXT_FONT[437] U8G2_FONT_SECTION("velvetscreen") PROGMEM =
 /*
  * Font: STK-L.bdf 36pt
  * https://stncrn.github.io/u8g2-unifont-helper/
- * "%/0123456789ABCDEFILNORSTUVXx"
+ * "#%-/0123456789ABCDEFGILNORSTUVXx"
  */
-const uint8_t LARGE_FONT[766] U8G2_FONT_SECTION("stk-l") =
-    "\35\0\4\4\4\5\3\1\6\20\30\0\0\27\0\0\0\1\77\0\0\2\341%'\17;\226\261\245FL"
-    "\64B\214\30\22\223\220)"
-    "Bj\10Q\232\214\42R\206\310\210\21d\304\30\32a\254\304\270!\0/\14"
-    "\272\272\275\311H\321g\343\306\1\60\37|\373\35CJT\20:"
-    "fW\207\320\210\60\42\304\204\30D\247"
-    "\214\331\354\20\11%"
-    "\212\314\0\61\24z\275\245a\244\12\231\71\63b\214\220q\363\377(E\6\62\33|"
-    "\373\35ShT\20:fl\344\14\211\231\301\306T\71\202#g\371\340\201\1\63\34|"
-    "\373\35ShT"
-    "\20:fl\344@r\264\263\222\344,\215\35\42\241\6\225\31\0\64 "
-    "|\373-!\203\206\214!\62\204"
-    "\314\220A#\10\215\30\65b\324\210Q\306\354\354\1\213\225\363\1\65\32|"
-    "\373\15\25[\214\234/\10)"
-    "Y\61j\350\310Y\32;DB\15*\63\0\66\33}\33\236SiV\14;gt^\230Y\302\202\324"
-    "\71\273;EbM\252\63\0\67\23|\373\205\25\17R\316\207\344\350p\312\201#"
-    "\347\35\0\70 |\373"
-    "\35ShT\20:f\331!\22D\310 "
-    ":\205\206\10\11B\307\354\354\20\11\65\250\314\0\71\32|\373"
-    "\35ShT\20:fg\207H,Q\223r\276\30DB\15*\63\0A\26}\33\246r\247\322P\62"
-    "j\310\250\21\343\354\335\203\357\354w\3B$}"
-    "\33\206Dj\226\214\42\61l\304\260\21\303F\14\33\61"
-    "\212\304\222MF\221\30v\316\236=\10\301b\11\0C\27}"
-    "\33\236Si\226\20Bft\376O\211\215"
-    " Db\215\42$\0D\33}\33\206Dj\226\214\32\62l\304\260\21\343\354\177vl\304("
-    "\22K\324"
-    "$\2E\22|\373\205\17R\316KD\30\215\234_>x`\0F\20|"
-    "\373\205\17R\316\227i\262\31"
-    "\71\377\22\0I\7s\333\204\77HL\15{\333\205\201\363\377\77|\360`\0N$}"
-    "\33\6\201\346\314"
-    "\35;\206\12U\242D&\306\230\30cd\210\221!fF\230\31a(+\314\256\63\67\0O\26}"
-    "\33"
-    "\236Si\226\214\32\61\316\376\277\33\61j\310\232Tg\0R\61\216;\6Ek\230\14#"
-    "\61n\304\270"
-    "\21\343F\214\33\61n\304\60\22\243\210\60Q\224j\310\260\61\243\306\20\232"
-    "\325\230QD\206\221\30\67b"
-    "\334\301\1S\42\216;\236c\211\226\220\42\61n\304\270\21c\307R\232,["
-    "\262\203\307\216\65h\16\25"
-    "\21&\253\320\0T\15}\33\206\17R\15\235\377\377\25\0U\21|"
-    "\373\205a\366\377\237\215\30\64D\15"
-    "*\63\0V\26\177\371\205\221\366\377\313\21\343\206\220\42C\25\11r'"
-    "\313\16\3X)~;\206\201\6"
-    "\217\221\30\66\204\20\31\42\244\206\14Cg\320$Q\222\6\315!"
-    "\33\62\212\10\31BD\206\215 v\320"
-    "\302\1x\24\312\272\205A\206\216\220@c\212\224\31$"
-    "S\14\262h\0\0\0\0\4\377\377\0";
+// 853 font bytes + the string literal's implicit NUL.
+const uint8_t LARGE_FONT[854] U8G2_FONT_SECTION("stk-l") =
+    " \000\004\004\004\005\003\001\006\020\030\000\000\027\000\000\000\001~"
+    "\000\000\0039#3}\033\236!\243\206\214\0322j\310\250!\243\206\014y\360 "
+    "\315\220QCF\015\0315d\324\220!\017\036\244\0312j\310\250!\243\206\214"
+    "\0322j\310\020\000%'\017;\226\261\245FL4B\214\030\022\223\220)Bj\010Q"
+    "\232\214\"R\206\310\210\021d\304\030\032a\254\304\270!\000-\014}\033~"
+    "\370\343D\331\303\037\003/\014\272\272\275\311H\321g\343\306\0010\037|"
+    "\373\035CJT\020:fW\207\320\2100\"\304\204\030D\247\214\331\354\020\011"
+    "%\212\314\0001\024z\275\245a\244\012\23193b\214\220q\363\377(E\0062"
+    "\033|\373\035ShT\020:fl\344\014\211\231\301\306T9\202#g\371\340\201"
+    "\0013\034|\373\035ShT\020:fl\344@r\264\263\222\344,\215\035\"\241\006"
+    "\225\031\0004 |\373-!\203\206\214!2\204\314\220A#\010\215\0305b\324"
+    "\210Q\306\354\354\001\213\225\363\0015\032|\373\015\025[\214\234/\010)"
+    "Y1j\350\310Y\032;DB\015*3\0006\033}\033\236SiV\014;gt^\230Y\302\202"
+    "\3249\273;EbM\2523\0007\023|\373\205\025\017R\316\207\344\350p\312\201"
+    "#\347\035\0008 |\373\035ShT\020:f\331!\022D\310 :\205\206\010\011B\307"
+    "\354\354\020\0115\250\314\0009\032|\373\035ShT\020:fg\207H,Q\223r\276"
+    "\030DB\015*3\000A\026}\033\246r\247\322P2j\310\250\021\343\354\335\203"
+    "\357\354w\003B$}\033\206Dj\226\214\"1l\304\260\021\303F\014\0331\212"
+    "\304\222MF\221\030v\316\236=\010\301b\011\000C\027}\033\236Si\226\020B"
+    "ft\376O\211\215 Db\215\"$\000D\033}\033\206Dj\226\214\0322l\304\260"
+    "\021\343\354\177vl\304(\022K\324$\002E\022|\373\205\017R\316KD\030\215"
+    "\234_>x`\000F\020|\373\205\017R\316\227i\262\0319\377\022\000G\031}"
+    "\033\236Si\226\020Bft>\312\235\355\216\215 Db\215\"$\000I\007s\333\204"
+    "\?HL\015{\333\205\201\363\377\?|\360`\000N$}\033\006\201\346\314\035;"
+    "\206\012U\242D&\306\230\030cd\210\221!fF\230\031a(+\314\25637\000O\026"
+    "}\033\236Si\226\214\0321\316\376\277\0331j\310\232Tg\000R1\216;\006Ek"
+    "\230\014#1n\304\270\021\343F\214\0331n\3040\022\243\2100Q\224j\310\260"
+    "1\243\306\020\232\325\230QD\206\221\0307b\334\301\001S\"\216;\236c\211"
+    "\226\220\"1n\304\270\021c\307R\232,[\262\203\307\2165h\016\025\021&"
+    "\253\320\000T\015}\033\206\017R\015\235\377\377\025\000U\021|\373\205a"
+    "\366\377\237\215\0304D\015*3\000V\026\177\371\205\221\366\377\313\021"
+    "\343\206\220\"C\025\011r'\313\016\003X)~;\206\201\006\217\221\0306\204"
+    "\020\031\"\244\206\014Cg\320$Q\222\006\315!\0332\212\010\031BD\206\215"
+    " v\320\302\001x\024\312\272\205A\206\216\220@c\212\224\031$S\014\262h"
+    "\000\000\000\000\004\377\377\000";
 
 #define play_icon_width 14
 #define play_icon_height 14
@@ -140,6 +131,7 @@ const char L_RUN[] PROGMEM = "RUN";
 const char L_RESTART[] PROGMEM = "RESTART";
 const char L_SOURCE[] PROGMEM = "SOURCE";
 const char L_PULSE[] PROGMEM = "PULSE OUT";
+const char L_MIDI_OUT[] PROGMEM = "MIDI OUT";
 const char L_ENC_DIR[] PROGMEM = "ENCODER DIR";
 const char L_ROT_DISP[] PROGMEM = "ROTATE DISP";
 const char L_BTN_MODE[] PROGMEM = "BTN MODE";
@@ -154,9 +146,10 @@ const char L_CV2_ZERO[] PROGMEM = "CV2 CAL 0V";
 const char L_CV2_HI[] PROGMEM = "CV2 CAL +5V";
 const char L_ERASE[] PROGMEM = "ERASE";
 const char *const MAIN_LABELS[PARAM_MAIN_LAST] PROGMEM = {
-    L_TEMPO,    L_RUN,      L_RESTART,  L_SOURCE,   L_PULSE,    L_ENC_DIR,
-    L_ROT_DISP, L_BTN_MODE, L_SAVE,     L_LOAD,     L_RESET,    L_CV1_LO,
-    L_CV1_ZERO, L_CV1_HI,   L_CV2_LO,   L_CV2_ZERO, L_CV2_HI,   L_ERASE};
+    L_TEMPO,    L_RUN,      L_RESTART,  L_SOURCE,   L_PULSE,    L_MIDI_OUT,
+    L_ENC_DIR,  L_ROT_DISP, L_BTN_MODE, L_SAVE,     L_LOAD,     L_RESET,
+    L_CV1_LO,   L_CV1_ZERO, L_CV1_HI,   L_CV2_LO,   L_CV2_ZERO, L_CV2_HI,
+    L_ERASE};
 
 // Channel-page labels, indexed by ChannelPageParam. Same PROGMEM-table reason
 // as MAIN_LABELS above; single source of truth for the channel-page strings.
@@ -169,13 +162,16 @@ const char C_DUTY[] PROGMEM = "DUTY";
 const char C_OFFSET[] PROGMEM = "OFFSET";
 const char C_SWING[] PROGMEM = "SWING";
 const char C_CHOKE[] PROGMEM = "CHOKE";
+const char C_MIDI_CH[] PROGMEM = "MIDI CH";
+const char C_MIDI_NOTE[] PROGMEM = "MIDI NOTE";
 const char C_CV1A[] PROGMEM = "CV1-A";
 const char C_CV1B[] PROGMEM = "CV1-B";
 const char C_CV2A[] PROGMEM = "CV2-A";
 const char C_CV2B[] PROGMEM = "CV2-B";
-const char *const CHANNEL_LABELS[] PROGMEM = {
-    C_CLOCK_MOD, C_STEPS, C_HITS,  C_ROTATE, C_PROB,  C_DUTY, C_OFFSET,
-    C_SWING,     C_CHOKE, C_CV1A,  C_CV1B,   C_CV2A,  C_CV2B};
+const char *const CHANNEL_LABELS[CP_PARAM_COUNT] PROGMEM = {
+    C_CLOCK_MOD, C_STEPS, C_HITS,     C_ROTATE,    C_PROB,
+    C_DUTY,      C_OFFSET, C_SWING,   C_CHOKE,     C_CV1A,
+    C_CV1B,      C_CV2A,   C_CV2B,    C_MIDI_CH,   C_MIDI_NOTE};
 
 const __FlashStringHelper *channelParamLabel(uint8_t i) {
   return (const __FlashStringHelper *)pgm_read_word(&CHANNEL_LABELS[i]);
@@ -183,6 +179,21 @@ const __FlashStringHelper *channelParamLabel(uint8_t i) {
 
 const __FlashStringHelper *mainParamLabel(uint8_t i) {
   return (const __FlashStringHelper *)pgm_read_word(&MAIN_LABELS[i]);
+}
+
+const char NOTE_LETTERS[] PROGMEM = "CCDDEFFGGAAB";
+const char NOTE_SHARPS[] PROGMEM = "010100101010";
+void noteName(uint8_t note, char *out) {
+  const uint8_t semitone = note % 12;
+  uint8_t n = 0;
+  out[n++] = (char)pgm_read_byte(&NOTE_LETTERS[semitone]);
+  if (pgm_read_byte(&NOTE_SHARPS[semitone]) == '1')
+    out[n++] = '#';
+  // MIDI 60 = C3, so the octave runs -2..8 across the 0..127 range.
+  const int8_t octave = (int8_t)(note / 12) - 2;
+  if (octave < 0)
+    out[n++] = '-';
+  itoa(octave < 0 ? -octave : octave, out + n, 10);
 }
 
 // Copy a flash (PROGMEM) string into a RAM buffer for u8g2 text functions.
@@ -403,6 +414,18 @@ void DisplayMainPage() {
     default: break;
     }
     break;
+  case PARAM_MAIN_MIDI_OUT:
+    copyP(g_main, sizeof(g_main), F("ON"));
+    switch (app.midi_out) {
+    case MIDI_OUT_OFF:
+      copyP(g_sub, sizeof(g_sub), F("MIDI OFF"));
+      copyP(g_main, sizeof(g_main), F("OFF"));
+    break;
+    case MIDI_OUT_CLK: copyP(g_sub, sizeof(g_sub), F("CLOCK")); break;
+    case MIDI_OUT_NOTE_CLK: copyP(g_sub, sizeof(g_sub), F("NOTE + CLOCK")); break;
+    default: copyP(g_sub, sizeof(g_sub), F("NOTE")); break;
+    }
+    break;
   // The three on/off preferences share one block: same DEFAULT / <alt> shape.
   case PARAM_MAIN_ENCODER_DIR:
   case PARAM_MAIN_ROTATE_DISP:
@@ -512,6 +535,15 @@ void DisplayChannelPage() {
     else
       itoa(src, g_main, 10);
     copyP(g_sub, sizeof(g_sub), F("CHOKE BY"));
+  } else if (param == CP_MIDI_CH || param == CP_MIDI_NOTE) {
+    if (param == CP_MIDI_NOTE) {
+      noteName(ch.getMidiNote(), g_main);
+    } else if (ch.getMidiChannel() == MIDI_CH_OFF) {
+      copyP(g_main, sizeof(g_main), F("OFF")); // channel 0 sends nothing
+    } else {
+      itoa(ch.getMidiChannel(), g_main, 10);
+    }
+    copyP(g_sub, sizeof(g_sub), channelParamLabel(param));
   } else {
     // CV mod slot (CV1-A/B, CV2-A/B): big value = amount, sub = destination.
     uint8_t slot = param - CP_CV1A;
