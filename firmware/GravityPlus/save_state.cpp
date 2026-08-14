@@ -200,6 +200,7 @@ void StateManager::_saveMetadata(const AppState &app) {
   current_meta.selected_pulse = static_cast<byte>(app.selected_pulse);
   current_meta.cv_run = app.cv_run;
   current_meta.cv_reset = app.cv_reset;
+  current_meta.midi_out = app.midi_out;
   for (uint8_t i = 0; i < 6; i++)
     current_meta.cv_cal[i] = app.cv_cal[i];
   EEPROM.put(METADATA_START_ADDR, current_meta);
@@ -218,6 +219,8 @@ void StateManager::_loadMetadata(AppState &app) {
   app.selected_pulse = static_cast<Clock::Pulse>(metadata.selected_pulse);
   app.cv_run = metadata.cv_run;
   app.cv_reset = metadata.cv_reset;
+  app.midi_out =
+      metadata.midi_out < MIDI_OUT_LAST ? metadata.midi_out : MIDI_OUT_CLK;
   for (uint8_t i = 0; i < 6; i++)
     app.cv_cal[i] = metadata.cv_cal[i];
 }

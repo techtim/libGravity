@@ -215,6 +215,44 @@ void test_load_clamps_corrupt_record(void) {
   }
 }
 
+// MIDI channel and note share one uint16_t (note in bits 0..6, channel in
+// 7..10). Neither field may disturb the other anywhere in its range, and both
+// must survive a save/load round trip.
+void test_midi_channel_note_packing(void) {
+  Channel ch;
+  TEST_ASSERT_EQUAL_INT(MIDI_CH_OFF, ch.getMidiChannel()); // default: no MIDI
+  TEST_ASSERT_EQUAL_INT(MIDI_DEFAULT_NOTE, ch.getMidiNote());
+
+  // Exhaustive: every channel against every note, each leaving the other alone.
+  for (uint8_t c = 0; c <= MIDI_CH_COUNT; c++) {
+    for (uint8_t n = 0; n < MIDI_NOTE_COUNT; n++) {
+      ch.setMidiChannel(c);
+      ch.setMidiNote(n);
+      TEST_ASSERT_EQUAL_INT(c, ch.getMidiChannel());
+      TEST_ASSERT_EQUAL_INT(n, ch.getMidiNote());
+    }
+  }
+
+  // Out-of-range edits clamp instead of spilling into the neighbouring field.
+  ch.setMidiChannel(1);
+  ch.setMidiNote(64);
+  ch.setMidiChannel(99);
+  TEST_ASSERT_EQUAL_INT(MIDI_CH_COUNT, ch.getMidiChannel());
+  TEST_ASSERT_EQUAL_INT(64, ch.getMidiNote()); // untouched
+  ch.setMidiNote(200);
+  TEST_ASSERT_EQUAL_INT(MIDI_NOTE_COUNT - 1, ch.getMidiNote());
+  TEST_ASSERT_EQUAL_INT(MIDI_CH_COUNT, ch.getMidiChannel()); // still intact
+
+  ch.setMidiChannel(7);
+  ch.setMidiNote(127);
+  byte p[Channel::SAVE_BYTES];
+  ch.save(p);
+  Channel other;
+  other.load(p);
+  TEST_ASSERT_EQUAL_INT(7, other.getMidiChannel());
+  TEST_ASSERT_EQUAL_INT(127, other.getMidiNote());
+}
+
 // A CV routed to HITS must actually change the drawn pattern, not just live_.
 void test_cv_hits_redraws_pattern(void) {
   Channel ch;
@@ -478,6 +516,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_cv_targets_clock_mod);
   RUN_TEST(test_cv_targets_duty_and_prob);
   RUN_TEST(test_cv_hits_redraws_pattern);
+  RUN_TEST(test_midi_channel_note_packing);
   RUN_TEST(test_load_clamps_corrupt_record);
   RUN_TEST(test_cv_steps_down_rebounds_hits_and_rotate);
   RUN_TEST(test_save_load_roundtrip);
