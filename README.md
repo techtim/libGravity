@@ -189,8 +189,7 @@ $ pio run -e gravityplus -t upload  # flash the connected board
 | `test/test_digital_output` | Gate/trigger state and trigger-duration release |
 | `test/test_button` | Debounce, press, and long-press callbacks |
 | `test/test_analog_input` | CV mapping, attenuation, and rising-edge detection |
-| `test/test_funcs` | GravityPlus params: defaults, ranges, euclidean pattern, CV targeting, save/load |
-| `test/test_gravityplus` | GravityPlus gate phases, rotate, choke, CV routing, MIDI packing |
+| `test/test_gravityplus` | GravityPlus Channel: param ranges, euclidean pattern, gate phases, rotate, choke, CV routing, MIDI packing, save/load |
 
 The interrupt-driven `Clock` (uClock + serial MIDI) and the U8g2 display are not
 host-tested; verify those on hardware. To add a suite, drop a new
