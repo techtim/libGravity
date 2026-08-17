@@ -36,15 +36,6 @@
 AppState app;
 StateManager stateManager;
 
-// Forward declarations.
-void updateSelection(byte &param, int change, int maxValue);
-void editMainParameter(int val, bool held);
-void editChannelParameter(int val, bool held);
-void editSelectedParameter(int val, bool held);
-void InitGravity(AppState &app);
-void ApplyCvCal();
-void ResetOutputs();
-
 // SHIFT state sampled when PLAY goes down. Button fires its handler on release, events can be unsynced
 bool shift_at_play_press = false;
 
@@ -163,8 +154,6 @@ void HandleIntClockTick(uint32_t tick) {
     app.channel[i].processClockTick(tick, gravity.outputs[i]);
   }
   // Choke: silence any channel whose choke source's gate is high this tick.
-  // Snapshot the decided gate states first so the trigger is the source's
-  // natural fire - independent of channel order and of the source being choked.
   bool gate_on[Gravity::OUTPUT_COUNT];
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
     gate_on[i] = gravity.outputs[i].On();
@@ -361,6 +350,10 @@ void HandleRotate(int val) {
 
 void HandleShiftRotate(int val) {
   updateSelection(app.selected_channel, val, Gravity::OUTPUT_COUNT + 1);
+  if (app.selected_channel == 0) {
+    app.editing_param = false;
+  }
+
   ClampSelection(app);
   stateManager.markDirty();
   app.refresh_screen = true;
