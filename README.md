@@ -40,7 +40,6 @@ src/                     libGravity hardware abstraction library
 firmware/
   Gravity/                 Alt firmware: probability / duty / offset / swing channels
   Euclidean/               Alt firmware: Euclidean rhythm generator channels
-  Modal/                   Unified firmware: each channel picks a func (PROB or EUCLID);
   GravityPlus/             Unified firmware: every channel is one Euclidean+probability gate
                            generator (steps/hits/rotate/prob/duty/offset/swing + choke + CV cal)
 examples/                  Small standalone sketches demonstrating the library
@@ -177,10 +176,8 @@ Build the firmware for an Arduino Nano (the `nano` env; set `board = nanoatmega3
 in `platformio.ini` for older 57600-baud bootloader Nanos):
 
 ```
-$ pio run -e nano                              # builds firmware/Euclidean
-$ PLATFORMIO_SRC_DIR=firmware/Gravity pio run -e nano   # builds firmware/Gravity
-$ PLATFORMIO_SRC_DIR=firmware/Modal   pio run -e nano   # builds firmware/Modal
-$ pio run -e nano -t upload                     # flash the connected board
+$ pio run -e gravityplus              # builds the firmware
+$ pio run -e gravityplus -t upload  # flash the connected board
 ```
 
 ### What's covered
@@ -192,7 +189,7 @@ $ pio run -e nano -t upload                     # flash the connected board
 | `test/test_digital_output` | Gate/trigger state and trigger-duration release |
 | `test/test_button` | Debounce, press, and long-press callbacks |
 | `test/test_analog_input` | CV mapping, attenuation, and rising-edge detection |
-| `test/test_funcs` | Modal firmware: func switching, per-func params, CV targeting, save/load |
+| `test/test_gravityplus` | GravityPlus Channel: param ranges, euclidean pattern, gate phases, rotate, choke, CV routing, MIDI packing, save/load |
 
 The interrupt-driven `Clock` (uClock + serial MIDI) and the U8g2 display are not
 host-tested; verify those on hardware. To add a suite, drop a new
@@ -200,8 +197,9 @@ host-tested; verify those on hardware. To add a suite, drop a new
 
 ### Continuous integration
 
-`.github/workflows/ci.yml` runs the native unit tests and compiles both firmwares
-for the Arduino Nano on every push and pull request.
+`.github/workflows/ci.yml` runs the native unit tests and compiles all three
+firmwares (`euclidean`, `gravity`, `gravityplus`) for the Arduino Nano on every
+push and pull request.
 
 Pushing a version tag (e.g. `git tag v2.0.2 && git push origin v2.0.2`) additionally
 builds the firmware and publishes a GitHub Release with the compiled `.hex` files

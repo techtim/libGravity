@@ -36,6 +36,61 @@ void test_defaults(void) {
   TEST_ASSERT_EQUAL_INT(50, ch.paramValue(CP_SWING, false));
 }
 
+// Every param clamps to its own range. Driving well past both ends is what
+// catches an off-by-one or a missing bound in clampParam().
+void test_param_ranges(void) {
+  Channel ch;
+  ch.editParam(CP_STEPS, 99);
+  TEST_ASSERT_EQUAL_INT(MAX_PATTERN_STEPS, ch.paramValue(CP_STEPS, false));
+  ch.editParam(CP_STEPS, -99);
+  TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_STEPS, false)); // never 0 steps
+
+  ch.editParam(CP_STEPS, 7); // 8 steps, so ROTATE may reach 7
+  ch.editParam(CP_ROTATE, 99);
+  TEST_ASSERT_EQUAL_INT(7, ch.paramValue(CP_ROTATE, false)); // steps - 1
+
+  ch.editParam(CP_PROB, 99);
+  TEST_ASSERT_EQUAL_INT(100, ch.paramValue(CP_PROB, false));
+  ch.editParam(CP_PROB, -999);
+  TEST_ASSERT_EQUAL_INT(0, ch.paramValue(CP_PROB, false));
+
+  ch.editParam(CP_DUTY, 99); // duty never reaches 100 - the gate must close
+  TEST_ASSERT_EQUAL_INT(99, ch.paramValue(CP_DUTY, false));
+  ch.editParam(CP_DUTY, -999);
+  TEST_ASSERT_EQUAL_INT(1, ch.paramValue(CP_DUTY, false)); // nor 0
+
+  ch.editParam(CP_OFFSET, 999);
+  TEST_ASSERT_EQUAL_INT(99, ch.paramValue(CP_OFFSET, false));
+
+  ch.editParam(CP_SWING, 999);
+  TEST_ASSERT_EQUAL_INT(95, ch.paramValue(CP_SWING, false));
+  ch.editParam(CP_SWING, -999);
+  TEST_ASSERT_EQUAL_INT(50, ch.paramValue(CP_SWING, false)); // 50 = no swing
+}
+
+// PROB = 0 silences the channel outright, whatever the pattern says. This is
+// the only test that reaches the RNG branch - test_probability_gate_edges uses
+// PROB = 100, which short-circuits before random() is ever called.
+void test_probability_zero_never_fires(void) {
+  Channel ch;
+  ch.setClockMod(MOD_CHOICE_SIZE - 1);
+  ch.editParam(CP_STEPS, 3);
+  ch.editParam(CP_HITS, 3); // every step a hit
+  ch.editParam(CP_PROB, -100);
+  TEST_ASSERT_EQUAL_INT(0, ch.paramValue(CP_PROB, false));
+
+  // random() is overloaded, so the two-arg form has to be named explicitly.
+  // 0 is the lowest possible roll: if PROB = 0 still loses to it, it always does.
+  When(OverloadedMethod(ArduinoFake(), random, long(long, long)))
+      .AlwaysReturn(0);
+  DigitalOutput out;
+  out.Init(7);
+  for (uint32_t t = 0; t < 32; t++) {
+    ch.processClockTick(t, out);
+    TEST_ASSERT_FALSE(out.On());
+  }
+}
+
 // HITS clamps to STEPS both when editing HITS up and when shrinking STEPS.
 void test_hits_clamped_to_steps(void) {
   Channel ch;
@@ -469,6 +524,8 @@ void test_choke_silences_when_source_on(void) {
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_defaults);
+  RUN_TEST(test_param_ranges);
+  RUN_TEST(test_probability_zero_never_fires);
   RUN_TEST(test_hits_clamped_to_steps);
   RUN_TEST(test_euclidean_gate_pattern);
   RUN_TEST(test_probability_gate_edges);
