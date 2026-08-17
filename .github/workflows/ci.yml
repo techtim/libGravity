@@ -45,7 +45,7 @@ jobs:
       - name: Build all firmwares
         # Each firmware has its own env (see platformio.ini); build them all so a
         # break in any sketch fails CI.
-        run: pio run -e euclidean -e gravity -e modal -e gravityplus
+        run: pio run -e euclidean -e gravity -e gravityplus
 
   release:
     name: Release firmware
@@ -72,14 +72,13 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: Build all firmwares
-        run: pio run -e euclidean -e gravity -e modal -e gravityplus
+        run: pio run -e euclidean -e gravity -e gravityplus
 
       - name: Collect firmware artifacts
         # Each env writes to its own .pio/build/<env>/firmware.hex.
         run: |
           cp .pio/build/euclidean/firmware.hex gravity-euclidean-${{ github.ref_name }}.hex
           cp .pio/build/gravity/firmware.hex gravity-classic-${{ github.ref_name }}.hex
-          cp .pio/build/modal/firmware.hex gravity-modal-${{ github.ref_name }}.hex
           cp .pio/build/gravityplus/firmware.hex gravity-plus-${{ github.ref_name }}.hex
 
       - name: Create GitHub release with firmware artifacts
@@ -88,6 +87,5 @@ jobs:
           files: |
             gravity-euclidean-${{ github.ref_name }}.hex
             gravity-classic-${{ github.ref_name }}.hex
-            gravity-modal-${{ github.ref_name }}.hex
             gravity-plus-${{ github.ref_name }}.hex
           generate_release_notes: true
