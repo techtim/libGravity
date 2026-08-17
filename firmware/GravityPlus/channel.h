@@ -26,15 +26,18 @@ static constexpr uint8_t MAX_CHOKE_SOURCE = 6;
 
 // MIDI channel + note share one uint16_t: bits 0..6 hold the note (0..127),
 // bits 7..11 the channel (0..16, where 0 = off / send nothing). 5 + 7 = 12
-// bits, so both keep their full MIDI range. Bits 12..15 are kept zero.
+// bits, so both keep their full MIDI range. Velocity takes the last 4 bits (12..15)
 static constexpr uint8_t MIDI_CH_COUNT = 16; // highest channel number
 static constexpr uint8_t MIDI_CH_OFF = 0;    // channel 0 = do not send
 static constexpr uint8_t MIDI_NOTE_COUNT = 128;
 static constexpr uint16_t MIDI_NOTE_MASK = 0x007F;
 static constexpr uint16_t MIDI_CH_SHIFT = 7;
 static constexpr uint16_t MIDI_CH_MASK = 0x1F;
-static constexpr uint16_t MIDI_USED_BITS = 0x0FFF;
+static constexpr uint16_t MIDI_VEL_SHIFT = 12;
+static constexpr uint16_t MIDI_VEL_MASK = 0x0F;
+static constexpr uint8_t MIDI_VEL_COUNT = 16;
 static constexpr uint8_t MIDI_DEFAULT_NOTE = 36;
+static constexpr uint8_t MIDI_DEFAULT_VEL_STEP = 13; // default == 111
 
 // One enum for every channel-page item, in UI order: clock mod, the seven
 // pattern/gate params (STEPS..SWING, the ones stored per channel in base_/live_),
@@ -56,6 +59,7 @@ enum ChannelPageParam : uint8_t {
   CP_CV2B,
   CP_MIDI_CH,   // MIDI channel      (0 = off, 1..16)
   CP_MIDI_NOTE, // MIDI note         (0..127)
+  CP_MIDI_VEL,  // MIDI velocity     (16 steps, 7..127)
   CP_PARAM_COUNT,
 };
 
@@ -113,7 +117,8 @@ public:
     }
     mute_ = false;
     choke_ = 0;
-    midi_ = MIDI_DEFAULT_NOTE; // channel 0 (off), note C1
+    // channel 0 (off), note C1, velocity step 13 -> 111
+    midi_ = MIDI_DEFAULT_NOTE | ((uint16_t)MIDI_DEFAULT_VEL_STEP << MIDI_VEL_SHIFT);
     step_ = 0;
     phase_ = 0;
     beat_ = 0;
@@ -188,7 +193,7 @@ public:
 
   // --- MIDI ---
   // Channel and note packed into midi_: see the bit layout above.
-  // 0 = off, 1..16 = send note on/off on that MIDI channel.
+  // , 1..16 = send note on/off on that MIDI channel.
   uint8_t getMidiChannel() const {
     return (uint8_t)((midi_ >> MIDI_CH_SHIFT) & MIDI_CH_MASK);
   }
@@ -196,6 +201,21 @@ public:
   void setMidiChannel(uint8_t ch) {
     const uint16_t c = (uint16_t)constrain((int)ch, 0, MIDI_CH_COUNT);
     midi_ = (uint16_t)((c << MIDI_CH_SHIFT) | (midi_ & MIDI_NOTE_MASK));
+  }
+
+  // Velocity as the stored 0..15 step, and as the 7..127 value actually sent.
+  uint8_t getMidiVelStep() const {
+    return (uint8_t)((midi_ >> MIDI_VEL_SHIFT) & MIDI_VEL_MASK);
+  }
+
+  void setMidiVelStep(uint8_t step) {
+    const uint16_t v = (uint16_t)constrain((int)step, 0, MIDI_VEL_COUNT - 1);
+    midi_ = (uint16_t)((midi_ & ~(MIDI_VEL_MASK << MIDI_VEL_SHIFT)) |
+                       (v << MIDI_VEL_SHIFT));
+  }
+
+  uint8_t getMidiVelocity() const {
+    return (uint8_t)((getMidiVelStep() << 3) | 0x07); // 7, 15 .. 127
   }
 
   uint8_t getMidiNote() const { return (uint8_t)(midi_ & MIDI_NOTE_MASK); }
@@ -302,6 +322,8 @@ public:
   static const uint8_t CVMOD_BASE = 3;
   static const uint8_t GATE_BASE = CVMOD_BASE + 2 * CVMOD_SLOTS;
   static const uint8_t MIDI_BYTE = GATE_BASE + CP_MOD_COUNT;
+  static const uint8_t SAVE_BYTES = MIDI_BYTE + 2; // midi_ is 16 bits
+
   void save(byte *p) const {
     p[0] = base_clock_mod_;
     p[1] = mute_ ? 0x01 : 0x00;
@@ -325,7 +347,7 @@ public:
       cvamt_[s] = (int8_t)constrain((int)(int8_t)p[CVMOD_BASE + CVMOD_SLOTS + s], -100, 100);
     }
 
-    midi_ = (uint16_t)(p[MIDI_BYTE] | ((uint16_t)p[MIDI_BYTE + 1] << 8)) & MIDI_USED_BITS;
+    midi_ = (uint16_t)(p[MIDI_BYTE] | ((uint16_t)p[MIDI_BYTE + 1] << 8));
     if (getMidiChannel() > MIDI_CH_COUNT)
       setMidiChannel(MIDI_CH_OFF);
 
@@ -336,7 +358,6 @@ public:
     refreshModPulses();
     finalize();
   }
-  static const uint8_t SAVE_BYTES = MIDI_BYTE + 2; // midi_ is 16 bits
 
 private:
   // Phase at which a gate edge with the given pulse `shift` occurs, i.e.

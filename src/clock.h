@@ -157,7 +157,7 @@ public:
   bool IsPaused() { return uClock.clock_state == uClock.PAUSED; }
 
   // Enable / disable the outgoing MIDI clock, start and stop bytes.
-  void SetMidiClockOut(bool on) { 
+  void SetMidiClockOut(bool on) {
     if (on) {
       uClock.setOnClockStart(sendMIDIStart);
       uClock.setOnClockStop(sendMIDIStop);
@@ -192,17 +192,11 @@ private:
     return true;
   }
 
-  static void sendMIDIStart() {
-    NeoSerial.write(MIDI_START);
-  }
+  static void sendMIDIStart() { NeoSerial.write(MIDI_START); }
 
-  static void sendMIDIStop() {
-    NeoSerial.write(MIDI_STOP);
-  }
+  static void sendMIDIStop() { NeoSerial.write(MIDI_STOP); }
 
-  static void sendMIDIClock(uint32_t tick) {
-    NeoSerial.write(MIDI_CLOCK);
-  }
+  static void sendMIDIClock(uint32_t tick) { NeoSerial.write(MIDI_CLOCK); }
 };
 
 #endif

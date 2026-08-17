@@ -164,6 +164,7 @@ const char C_SWING[] PROGMEM = "SWING";
 const char C_CHOKE[] PROGMEM = "CHOKE";
 const char C_MIDI_CH[] PROGMEM = "MIDI CH";
 const char C_MIDI_NOTE[] PROGMEM = "MIDI NOTE";
+const char C_MIDI_VEL[] PROGMEM = "MIDI VEL";
 const char C_CV1A[] PROGMEM = "CV1-A";
 const char C_CV1B[] PROGMEM = "CV1-B";
 const char C_CV2A[] PROGMEM = "CV2-A";
@@ -171,7 +172,8 @@ const char C_CV2B[] PROGMEM = "CV2-B";
 const char *const CHANNEL_LABELS[CP_PARAM_COUNT] PROGMEM = {
     C_CLOCK_MOD, C_STEPS, C_HITS,     C_ROTATE,    C_PROB,
     C_DUTY,      C_OFFSET, C_SWING,   C_CHOKE,     C_CV1A,
-    C_CV1B,      C_CV2A,   C_CV2B,    C_MIDI_CH,   C_MIDI_NOTE};
+    C_CV1B,      C_CV2A,   C_CV2B,    C_MIDI_CH,   C_MIDI_NOTE,
+    C_MIDI_VEL};
 
 const __FlashStringHelper *channelParamLabel(uint8_t i) {
   return (const __FlashStringHelper *)pgm_read_word(&CHANNEL_LABELS[i]);
@@ -535,9 +537,11 @@ void DisplayChannelPage() {
     else
       itoa(src, g_main, 10);
     copyP(g_sub, sizeof(g_sub), F("CHOKE BY"));
-  } else if (param == CP_MIDI_CH || param == CP_MIDI_NOTE) {
+  } else if (param >= CP_MIDI_CH) {
     if (param == CP_MIDI_NOTE) {
       noteName(ch.getMidiNote(), g_main);
+    } else if (param == CP_MIDI_VEL) {
+      itoa(ch.getMidiVelocity(), g_main, 10); // the value actually sent
     } else if (ch.getMidiChannel() == MIDI_CH_OFF) {
       copyP(g_main, sizeof(g_main), F("OFF")); // channel 0 sends nothing
     } else {

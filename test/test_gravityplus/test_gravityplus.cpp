@@ -222,6 +222,8 @@ void test_midi_channel_note_packing(void) {
   Channel ch;
   TEST_ASSERT_EQUAL_INT(MIDI_CH_OFF, ch.getMidiChannel()); // default: no MIDI
   TEST_ASSERT_EQUAL_INT(MIDI_DEFAULT_NOTE, ch.getMidiNote());
+  TEST_ASSERT_EQUAL_INT(MIDI_DEFAULT_VEL_STEP, ch.getMidiVelStep());
+  TEST_ASSERT_EQUAL_INT(111, ch.getMidiVelocity()); // step 13 -> exactly 111
 
   // Exhaustive: every channel against every note, each leaving the other alone.
   for (uint8_t c = 0; c <= MIDI_CH_COUNT; c++) {
@@ -243,14 +245,32 @@ void test_midi_channel_note_packing(void) {
   TEST_ASSERT_EQUAL_INT(MIDI_NOTE_COUNT - 1, ch.getMidiNote());
   TEST_ASSERT_EQUAL_INT(MIDI_CH_COUNT, ch.getMidiChannel()); // still intact
 
+  // Velocity occupies the top 4 bits; it must not disturb channel or note.
+  ch.setMidiChannel(9);
+  ch.setMidiNote(70);
+  for (uint8_t s = 0; s < MIDI_VEL_COUNT; s++) {
+    ch.setMidiVelStep(s);
+    TEST_ASSERT_EQUAL_INT(s, ch.getMidiVelStep());
+    TEST_ASSERT_EQUAL_INT((s << 3) | 7, ch.getMidiVelocity()); // 7..127
+    TEST_ASSERT_EQUAL_INT(9, ch.getMidiChannel());
+    TEST_ASSERT_EQUAL_INT(70, ch.getMidiNote());
+  }
+  ch.setMidiVelStep(200); // clamps, does not spill into the note/channel
+  TEST_ASSERT_EQUAL_INT(MIDI_VEL_COUNT - 1, ch.getMidiVelStep());
+  TEST_ASSERT_EQUAL_INT(127, ch.getMidiVelocity());
+  TEST_ASSERT_EQUAL_INT(9, ch.getMidiChannel());
+  TEST_ASSERT_EQUAL_INT(70, ch.getMidiNote());
+
   ch.setMidiChannel(7);
   ch.setMidiNote(127);
+  ch.setMidiVelStep(5);
   byte p[Channel::SAVE_BYTES];
   ch.save(p);
   Channel other;
   other.load(p);
   TEST_ASSERT_EQUAL_INT(7, other.getMidiChannel());
   TEST_ASSERT_EQUAL_INT(127, other.getMidiNote());
+  TEST_ASSERT_EQUAL_INT(5, other.getMidiVelStep());
 }
 
 // A CV routed to HITS must actually change the drawn pattern, not just live_.

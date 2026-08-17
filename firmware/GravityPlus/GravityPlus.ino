@@ -52,10 +52,10 @@ bool shift_at_play_press = false;
 // Written by the clock ISR and by the UI, hence volatile + the guarded read-modify-writes below.
 volatile uint8_t midi_notes_on = 0;
 
-void SendMidiNote(uint8_t channel, uint8_t note, bool on) {
-  NeoSerial.write((uint8_t)((on ? 0x90 : 0x80) | (channel - 1)));
+void SendMidiNote(uint8_t channel, uint8_t note, uint8_t velocity) {
+  NeoSerial.write((uint8_t)((velocity != 0 ? 0x90 : 0x80) | (channel - 1)));
   NeoSerial.write(note);
-  NeoSerial.write((uint8_t)(on ? 100 : 0));
+  NeoSerial.write((uint8_t)(velocity));
 }
 
 // Release channel i's sounding note, if any, using its CURRENT channel/note.
@@ -73,7 +73,7 @@ void ReleaseChannelNote(uint8_t i) {
   }
   const uint8_t mch = app.channel[i].getMidiChannel();
   if (mch != MIDI_CH_OFF) {
-    SendMidiNote(mch, app.channel[i].getMidiNote(), false);
+    SendMidiNote(mch, app.channel[i].getMidiNote(), 0);
   }
 }
 
@@ -229,7 +229,7 @@ void HandleIntClockTick(uint32_t tick) {
       const bool sounding = (midi_notes_on & bit) != 0;
       const bool gate = gravity.outputs[i].On();
       if (gate != sounding) {
-        SendMidiNote(mch, app.channel[i].getMidiNote(), gate);
+        SendMidiNote(mch, app.channel[i].getMidiNote(), gate ? app.channel[i].getMidiVelocity() : 0);
         midi_notes_on = gate ? (midi_notes_on | bit) : (midi_notes_on & ~bit);
       }
     }
@@ -504,8 +504,7 @@ void editChannelParameter(int val, bool held) {
   } else if (pageParamIsGate(app.selected_param)) {
     ch.editParam(app.selected_param, val);
   } else if (app.selected_param == CP_CHOKE) {
-    // Choke source: 0 = off, else a 1-based channel number. A channel may not
-    // choke itself, so hop over its own number (app.selected_channel).
+    // Choke source: 0 = off, else a 1-based channel number. A channel may not choke itself
     byte prev = ch.getChoke();
     byte src = prev;
     updateSelection(src, val, Gravity::OUTPUT_COUNT + 1); // 0..OUTPUT_COUNT
@@ -515,6 +514,8 @@ void editChannelParameter(int val, bool held) {
       src = (hopped == app.selected_channel) ? prev : hopped; // edge: stay put
     }
     ch.setChoke(src);
+  } else if (app.selected_param == CP_MIDI_VEL) {
+    ch.setMidiVelStep(ch.getMidiVelStep() + val);
   } else if (app.selected_param == CP_MIDI_CH || app.selected_param == CP_MIDI_NOTE) {
     // Release first, while the old channel/note are still there to send the note-off
     ReleaseChannelNote(app.selected_channel - 1);
