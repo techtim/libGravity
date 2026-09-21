@@ -5,7 +5,7 @@
 
 #include "save_state.h"
 
-#include <EEPROM.h>
+#include <avr/eeprom.h>
 
 #include "app_state.h"
 
@@ -28,9 +28,6 @@ static_assert(sizeof(StateManager::EepromData) * (StateManager::MAX_SAVE_SLOTS +
 static_assert(MAX_CHOKE_SOURCE == Gravity::OUTPUT_COUNT,
               "MAX_CHOKE_SOURCE must be equal Gravity::OUTPUT_COUNT");
 
-// Single shared EEPROM scratch buffer (~80 B). Save and load never overlap, so
-// one static instead of one per function keeps RAM headroom for the stack.
-static StateManager::EepromData eeprom_io;
 
 StateManager::StateManager()
     : _lastChangeTime(0), _isDirty(false), _isMetadataDirty(false) {}
@@ -111,8 +108,8 @@ void StateManager::markMetadataDirty() {
 
 void StateManager::factoryReset(AppState &app) {
   noInterrupts();
-  for (unsigned int i = 0; i < EEPROM.length(); i++) {
-    EEPROM.write(i, 0);
+  for (unsigned int i = 0; i < E2END + 1u; i++) {
+    eeprom_update_byte((uint8_t *)i, 0);
   }
   // Put defaults into app FIRST, then persist them. (Do not _loadMetadata here -
   // the EEPROM was just erased, so it would read back zeros/garbage.)
@@ -144,7 +141,7 @@ static uint16_t layoutSignature() {
 
 bool StateManager::_isDataValid() {
   Metadata metadata;
-  EEPROM.get(METADATA_START_ADDR, metadata);
+  eeprom_read_block(&metadata, (const uint8_t *)METADATA_START_ADDR, sizeof(metadata));
   bool name_match = (strcmp(metadata.sketch_name, SKETCH_NAME) == 0);
   bool version_match = (strcmp(metadata.version, SEMANTIC_VERSION) == 0);
   bool layout_match = (metadata.layout == layoutSignature());
@@ -155,35 +152,35 @@ void StateManager::_saveState(const AppState &app, byte slot_index) {
   if (slot_index >= MAX_SAVE_SLOTS + 1)
     return;
 
-  EepromData &save_data = eeprom_io;
+  // Block ops, not a byte loop: one call per field instead of one per byte.
+  uint8_t *addr = (uint8_t *)(EEPROM_DATA_START_ADDR + (int)(slot_index * sizeof(EepromData)));
+  eeprom_update_block(&app.tempo, addr, sizeof(app.tempo));
+  addr += sizeof(app.tempo);
 
-  save_data.tempo = app.tempo;
-  save_data.selected_param = app.selected_param;
-  save_data.selected_channel = app.selected_channel;
-
+  byte record[Channel::SAVE_BYTES];
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
-    app.channel[i].save(save_data.channel_data[i]);
+    app.channel[i].save(record);
+    eeprom_update_block(record, addr, Channel::SAVE_BYTES);
+    addr += Channel::SAVE_BYTES;
   }
-
-  int address = EEPROM_DATA_START_ADDR + (slot_index * sizeof(EepromData));
-  EEPROM.put(address, save_data);
 }
 
 void StateManager::_loadState(AppState &app, byte slot_index) {
   if (slot_index >= MAX_SAVE_SLOTS + 1)
     return;
 
-  EepromData &load_data = eeprom_io;
-  int address = EEPROM_DATA_START_ADDR + (slot_index * sizeof(EepromData));
-  EEPROM.get(address, load_data);
+  const uint8_t *addr = (const uint8_t *)(EEPROM_DATA_START_ADDR +
+                                          (int)(slot_index * sizeof(EepromData)));
+  eeprom_read_block(&app.tempo, addr, sizeof(app.tempo));
+  addr += sizeof(app.tempo);
+  // selected_param / selected_channel are no longer persisted: they are pure
+  // UI position, and UpdateDisplay() bounds them every frame anyway.
 
-  app.tempo = load_data.tempo;
-  app.selected_param = load_data.selected_param;
-  app.selected_channel = load_data.selected_channel;
-  ClampSelection(app);
-
+  byte record[Channel::SAVE_BYTES];
   for (uint8_t i = 0; i < Gravity::OUTPUT_COUNT; i++) {
-    app.channel[i].load(load_data.channel_data[i]);
+    eeprom_read_block(record, addr, Channel::SAVE_BYTES);
+    addr += Channel::SAVE_BYTES;
+    app.channel[i].load(record);
   }
 }
 
@@ -203,12 +200,12 @@ void StateManager::_saveMetadata(const AppState &app) {
   current_meta.midi_out = app.midi_out;
   for (uint8_t i = 0; i < 6; i++)
     current_meta.cv_cal[i] = app.cv_cal[i];
-  EEPROM.put(METADATA_START_ADDR, current_meta);
+  eeprom_update_block(&current_meta, (uint8_t *)METADATA_START_ADDR, sizeof(current_meta));
 }
 
 void StateManager::_loadMetadata(AppState &app) {
   Metadata metadata;
-  EEPROM.get(METADATA_START_ADDR, metadata);
+  eeprom_read_block(&metadata, (const uint8_t *)METADATA_START_ADDR, sizeof(metadata));
   app.selected_save_slot = metadata.selected_save_slot;
   if (app.selected_save_slot >= MAX_SAVE_SLOTS)
     app.selected_save_slot = 0;
@@ -219,8 +216,7 @@ void StateManager::_loadMetadata(AppState &app) {
   app.selected_pulse = static_cast<Clock::Pulse>(metadata.selected_pulse);
   app.cv_run = metadata.cv_run;
   app.cv_reset = metadata.cv_reset;
-  app.midi_out =
-      metadata.midi_out < MIDI_OUT_LAST ? metadata.midi_out : MIDI_OUT_CLK;
+  app.midi_out = metadata.midi_out < MIDI_OUT_LAST ? metadata.midi_out : MIDI_OUT_CLK;
   for (uint8_t i = 0; i < 6; i++)
     app.cv_cal[i] = metadata.cv_cal[i];
 }

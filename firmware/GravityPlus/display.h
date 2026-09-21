@@ -111,6 +111,8 @@ constexpr uint8_t CHANNEL_BOXES_Y = 50;
 constexpr uint8_t CHANNEL_BOX_WIDTH = 18;
 constexpr uint8_t CHANNEL_BOX_HEIGHT = 14;
 
+#include "debug_ram.h" // after the fonts/layout constants it draws with
+
 static char g_main[16];
 static char g_sub[20];
 
@@ -297,9 +299,6 @@ void drawMenuItems(MenuLabelFn menu_label, int menu_size) {
   }
 }
 
-// Visual indicator: mark the active save slot.
-inline void solidTick() { gravity.display.drawBox(56, 4, 4, 4); }
-
 // Center-zero horizontal bar meter for a bipolar CV reading (-512..+512). The
 // fill grows right of centre for positive readings, left for negative.
 void drawCvMeter(int value, uint8_t x, uint8_t y, uint8_t w, uint8_t h) {
@@ -366,9 +365,9 @@ void DisplayMainPage() {
     copyP(g_main, sizeof(g_main), F("RST"));
     switch (app.cv_reset) {
     case CV_RESET_NONE: copyP(g_sub, sizeof(g_sub), F("NONE")); break;
-    case CV_RESET_CV1: copyP(g_sub, sizeof(g_sub), F("CV1 TRIG")); break;
-    case CV_RESET_CV2: copyP(g_sub, sizeof(g_sub), F("CV2 TRIG")); break;
-    case CV_RESET_EXT: copyP(g_sub, sizeof(g_sub), F("EXT TRIG")); break;
+    case CV_RESET_CV1: copyP(g_sub, sizeof(g_sub), F("CV1")); break;
+    case CV_RESET_CV2: copyP(g_sub, sizeof(g_sub), F("CV2")); break;
+    case CV_RESET_EXT: copyP(g_sub, sizeof(g_sub), F("EXT")); break;
     }
     break;
   case PARAM_MAIN_CV1_CAL_LO:
@@ -451,7 +450,7 @@ void DisplayMainPage() {
       copyP(g_sub, sizeof(g_sub), F("BACK TO MAIN"));
     } else {
       if (slot == app.selected_save_slot) {
-        solidTick();
+        gravity.display.drawBox(56, 4, 4, 4); // Visual indicator: mark the active save slot.
       }
       displaySaveSlot(g_main, slot);
       copyP(g_sub, sizeof(g_sub),
@@ -614,6 +613,7 @@ void UpdateDisplay() {
       DisplayChannelPage();
     }
     DisplaySelectedChannel();
+    DEBUG_RAM_DRAW();
   } while (gravity.display.nextPage());
 }
 

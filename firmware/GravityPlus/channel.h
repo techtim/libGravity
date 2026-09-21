@@ -373,7 +373,7 @@ private:
   }
 
   // Clamp a raw value to param i's range. HITS is bounded by `steps`.
-  static int clampParam(uint8_t i, int v, int8_t steps) {
+  static uint8_t clampParam(uint8_t i, int v, int8_t steps) {
     switch (i) {
     case CP_STEPS: return constrain(v, 1, MAX_PATTERN_STEPS);
     case CP_HITS: return constrain(v, 1, steps);

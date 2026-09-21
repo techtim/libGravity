@@ -52,8 +52,6 @@ public:
   };
   struct EepromData {
     int tempo;
-    byte selected_param;
-    byte selected_channel;
     byte channel_data[Gravity::OUTPUT_COUNT][Channel::SAVE_BYTES];
   };
 

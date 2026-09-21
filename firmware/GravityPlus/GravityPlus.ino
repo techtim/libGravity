@@ -43,10 +43,20 @@ bool shift_at_play_press = false;
 // Written by the clock ISR and by the UI, hence volatile + the guarded read-modify-writes below.
 volatile uint8_t midi_notes_on = 0;
 
+// Reached from BOTH the clock ISR (note out per tick) and the UI thread
+// (ReleaseChannelNote while editing MIDI CH / MIDI NOTE). NeoHWSerial::write()
+// is not reentrant: it reads _tx_buffer_head, may busy-wait for space, then
+// stores and advances the head - all unguarded. An ISR landing inside that
+// window rewinds the head over bytes it already queued. Hold interrupts across
+// the whole 3-byte message, restoring SREG rather than blindly re-enabling,
+// since one of the callers is already inside an ISR.
 void SendMidiNote(uint8_t channel, uint8_t note, uint8_t velocity) {
+  const uint8_t sreg = SREG;
+  cli();
   NeoSerial.write((uint8_t)((velocity != 0 ? 0x90 : 0x80) | (channel - 1)));
   NeoSerial.write(note);
   NeoSerial.write((uint8_t)(velocity));
+  SREG = sreg;
 }
 
 // Release channel i's sounding note, if any, using its CURRENT channel/note.
@@ -82,6 +92,7 @@ void AllMidiNotesOff() {
 //
 
 void setup() {
+  DEBUG_RAM_PAINT(); // no-op unless built with -DDEBUG_FREE_RAM
   gravity.Init();
 
   Bootsplash();
