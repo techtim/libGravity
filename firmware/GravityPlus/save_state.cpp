@@ -58,22 +58,20 @@ bool StateManager::loadData(AppState &app, byte slot_index) {
   return true;
 }
 
+// Saves run with interrupts ON: each changed EEPROM byte busy-waits ~3.3 ms,
+// and avr-libc already guards the timed EEMPE/EEPE pair itself. Only the main
+// thread writes the saved fields, so the clock ISR can keep running meanwhile.
 void StateManager::saveData(const AppState &app) {
-  noInterrupts();
-  if (app.selected_save_slot >= MAX_SAVE_SLOTS + 1) {
-    interrupts();
+  if (app.selected_save_slot >= MAX_SAVE_SLOTS + 1)
     return;
-  }
   _saveState(app, app.selected_save_slot);
   _saveMetadata(app);
   _isDirty = false;
   _isMetadataDirty = false;
-  interrupts();
 }
 
 void StateManager::update(const AppState &app) {
   if (_isDirty && (millis() - _lastChangeTime > SAVE_DELAY_MS)) {
-    noInterrupts();
     _saveState(app, TRANSIENT_SLOT);
     // Metadata (encoder/rotate/CV cal/slot) changes rarely, so only rewrite it
     // when actually touched - avoids an extra ~50 B EEPROM write every save.
@@ -82,7 +80,6 @@ void StateManager::update(const AppState &app) {
       _isMetadataDirty = false;
     }
     _isDirty = false;
-    interrupts();
   }
 }
 

@@ -308,7 +308,7 @@ public:
 
     if (!output.On()) {
       if (phase_ == high_phase) {
-        if (nextStep() && (live_[CP_PROB] >= 100 || live_[CP_PROB] > (uint8_t)random(0, 100)))
+        if (nextStep() && (live_[CP_PROB] >= 100 || live_[CP_PROB] > rollPercent()))
           output.High();
       }
     }
@@ -370,6 +370,19 @@ private:
     while (shift >= mod)
       shift -= mod;
     return shift ? (uint16_t)(mod - shift) : 0;
+  }
+
+  // Per-hit probability roll, 0..99: any PROB fires within 1/256 of its exact
+  // odds. random(0, 100) costs two 32-bit divisions (~95 us) and this runs in
+  // the clock ISR for every hit: a 16-bit xorshift (period 65535) plus an 8x8
+  // multiply-shift instead. Not reentrant - ISR only.
+  static uint8_t rollPercent() {
+    static uint16_t x = 0xACE1; // any non-zero seed
+    x ^= x << 7;
+    x ^= x >> 9;
+    x ^= x << 8;
+    const uint8_t hi = x >> 8;
+    return (uint8_t)((hi * 100u) >> 8);
   }
 
   // Clamp a raw value to param i's range. HITS is bounded by `steps`.

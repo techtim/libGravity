@@ -11,6 +11,8 @@
 
 #include "libGravity.h"
 
+#include <Wire.h> // for setClock in initDisplay()
+
 // Initialize the static pointer for the EncoderDir class to null. We want to
 // have a static pointer to decouple the ISR from the global gravity object.
 Encoder* Encoder::_instance = nullptr;
@@ -58,6 +60,17 @@ void Gravity::initOutputs() {
 void Gravity::initDisplay() {
     // OLED Display configuration.
     display.begin();
+    // Built with U8X8_DO_NOT_SET_WIRE_CLOCK (platformio.ini), u8x8 no longer
+    // sets the bus clock before every transfer, and begin() -> Wire.begin()
+    // left it at 100 kHz. Apply the display's own clock (400 kHz for the
+    // SSD1306) once. Harmless in builds without the flag.
+    Wire.setClock(display.getU8x8()->bus_clock);
+
+    // Wire ships with timeout checking DISABLED (twi_timeout_us == 0), so every
+    // wait in the I2C driver is unbounded: a single disturbed display
+    // transaction wedges the main loop permanently. Time out and reset the bus
+    // instead - a dropped frame beats a dead module.
+    Wire.setWireTimeout(25000 /* us */, true /* reset bus on timeout */);
 }
 
 void Gravity::Process() {

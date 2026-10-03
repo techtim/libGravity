@@ -79,15 +79,34 @@ void test_probability_zero_never_fires(void) {
   ch.editParam(CP_PROB, -100);
   TEST_ASSERT_EQUAL_INT(0, ch.paramValue(CP_PROB, false));
 
-  // random() is overloaded, so the two-arg form has to be named explicitly.
-  // 0 is the lowest possible roll: if PROB = 0 still loses to it, it always does.
-  When(OverloadedMethod(ArduinoFake(), random, long(long, long)))
-      .AlwaysReturn(0);
   DigitalOutput out;
   out.Init(7);
   for (uint32_t t = 0; t < 32; t++) {
     ch.processClockTick(t, out);
     TEST_ASSERT_FALSE(out.On());
+  }
+}
+
+// The per-hit roll spreads evenly over 0..99: PROB = 50 fires about half the
+// hits, PROB = 10 about a tenth. Guards the xorshift + multiply-shift mapping.
+void test_probability_roll_is_uniform(void) {
+  const uint8_t probs[] = {50, 10};
+  for (uint8_t p = 0; p < 2; p++) {
+    Channel ch;
+    ch.setClockMod(MOD_CHOICE_SIZE - 1); // 4 ticks per step
+    ch.editParam(CP_PROB, probs[p] - 100); // STEPS = HITS = 1: every step a hit
+    DigitalOutput out;
+    out.Init(7);
+    const uint16_t steps = 2000;
+    uint16_t fired = 0;
+    for (uint32_t t = 0; t < steps * 4UL; t++) {
+      const bool was_on = out.On();
+      ch.processClockTick(t, out);
+      if (!was_on && out.On())
+        fired++;
+    }
+    // ~4.5 sigma for p = 0.5 over 2000 steps; the roll is deterministic anyway.
+    TEST_ASSERT_INT_WITHIN(100, steps * probs[p] / 100, fired);
   }
 }
 
@@ -584,6 +603,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_defaults);
   RUN_TEST(test_param_ranges);
   RUN_TEST(test_probability_zero_never_fires);
+  RUN_TEST(test_probability_roll_is_uniform);
   RUN_TEST(test_hits_clamped_to_steps);
   RUN_TEST(test_euclidean_gate_pattern);
   RUN_TEST(test_probability_gate_edges);
