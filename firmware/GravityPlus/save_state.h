@@ -47,12 +47,11 @@ public:
     byte selected_pulse;
     byte cv_run;
     byte cv_reset;
+    byte midi_out;
     int cv_cal[6];
   };
   struct EepromData {
     int tempo;
-    byte selected_param;
-    byte selected_channel;
     byte channel_data[Gravity::OUTPUT_COUNT][Channel::SAVE_BYTES];
   };
 

@@ -22,7 +22,22 @@
 #include "digital_output.h"
 
 static constexpr uint8_t MAX_PATTERN_STEPS = 16; // pattern bitmap fits a uint16_t
-static constexpr uint8_t MAX_CHOKE_SOURCE = 6; // matches Gravity::OUTPUT_COUNT
+static constexpr uint8_t MAX_CHOKE_SOURCE = 6;
+
+// MIDI channel + note share one uint16_t: bits 0..6 hold the note (0..127),
+// bits 7..11 the channel (0..16, where 0 = off / send nothing). 5 + 7 = 12
+// bits, so both keep their full MIDI range. Velocity takes the last 4 bits (12..15)
+static constexpr uint8_t MIDI_CH_COUNT = 16; // highest channel number
+static constexpr uint8_t MIDI_CH_OFF = 0;    // channel 0 = do not send
+static constexpr uint8_t MIDI_NOTE_COUNT = 128;
+static constexpr uint16_t MIDI_NOTE_MASK = 0x007F;
+static constexpr uint16_t MIDI_CH_SHIFT = 7;
+static constexpr uint16_t MIDI_CH_MASK = 0x1F;
+static constexpr uint16_t MIDI_VEL_SHIFT = 12;
+static constexpr uint16_t MIDI_VEL_MASK = 0x0F;
+static constexpr uint8_t MIDI_VEL_COUNT = 16;
+static constexpr uint8_t MIDI_DEFAULT_NOTE = 36;
+static constexpr uint8_t MIDI_DEFAULT_VEL_STEP = 13; // default == 111
 
 // One enum for every channel-page item, in UI order: clock mod, the seven
 // pattern/gate params (STEPS..SWING, the ones stored per channel in base_/live_),
@@ -42,6 +57,9 @@ enum ChannelPageParam : uint8_t {
   CP_CV1B,
   CP_CV2A,
   CP_CV2B,
+  CP_MIDI_CH,   // MIDI channel      (0 = off, 1..16)
+  CP_MIDI_NOTE, // MIDI note         (0..127)
+  CP_MIDI_VEL,  // MIDI velocity     (16 steps, 7..127)
   CP_PARAM_COUNT,
 };
 
@@ -99,6 +117,8 @@ public:
     }
     mute_ = false;
     choke_ = 0;
+    // channel 0 (off), note C1, velocity step 13 -> 111
+    midi_ = MIDI_DEFAULT_NOTE | ((uint16_t)MIDI_DEFAULT_VEL_STEP << MIDI_VEL_SHIFT);
     step_ = 0;
     phase_ = 0;
     beat_ = 0;
@@ -170,6 +190,40 @@ public:
   // (applied in the clock ISR, see HandleIntClockTick).
   void setChoke(uint8_t source) { choke_ = source; }
   uint8_t getChoke() const { return choke_; }
+
+  // --- MIDI ---
+  // Channel and note packed into midi_: see the bit layout above.
+  // , 1..16 = send note on/off on that MIDI channel.
+  uint8_t getMidiChannel() const {
+    return (uint8_t)((midi_ >> MIDI_CH_SHIFT) & MIDI_CH_MASK);
+  }
+
+  void setMidiChannel(uint8_t ch) {
+    const uint16_t c = (uint16_t)constrain((int)ch, 0, MIDI_CH_COUNT);
+    midi_ = (uint16_t)((c << MIDI_CH_SHIFT) | (midi_ & MIDI_NOTE_MASK));
+  }
+
+  // Velocity as the stored 0..15 step, and as the 7..127 value actually sent.
+  uint8_t getMidiVelStep() const {
+    return (uint8_t)((midi_ >> MIDI_VEL_SHIFT) & MIDI_VEL_MASK);
+  }
+
+  void setMidiVelStep(uint8_t step) {
+    const uint16_t v = (uint16_t)constrain((int)step, 0, MIDI_VEL_COUNT - 1);
+    midi_ = (uint16_t)((midi_ & ~(MIDI_VEL_MASK << MIDI_VEL_SHIFT)) |
+                       (v << MIDI_VEL_SHIFT));
+  }
+
+  uint8_t getMidiVelocity() const {
+    return (uint8_t)((getMidiVelStep() << 3) | 0x07); // 7, 15 .. 127
+  }
+
+  uint8_t getMidiNote() const { return (uint8_t)(midi_ & MIDI_NOTE_MASK); }
+
+  void setMidiNote(uint8_t note) {
+    const uint16_t n = (uint16_t)constrain((int)note, 0, MIDI_NOTE_COUNT - 1);
+    midi_ = (uint16_t)((midi_ & ~MIDI_NOTE_MASK) | n);
+  }
 
   uint8_t patternSteps() const { return live_[CP_STEPS]; }
   bool patternHit(uint8_t i) const { return (pattern_ & (1U << i)) != 0; }
@@ -254,7 +308,7 @@ public:
 
     if (!output.On()) {
       if (phase_ == high_phase) {
-        if (nextStep() && (live_[CP_PROB] >= 100 || live_[CP_PROB] > (uint8_t)random(0, 100)))
+        if (nextStep() && (live_[CP_PROB] >= 100 || live_[CP_PROB] > rollPercent()))
           output.High();
       }
     }
@@ -267,6 +321,9 @@ public:
   // [3+N..3+2N)=CV amounts, then the gate params. N = CVMOD_SLOTS.
   static const uint8_t CVMOD_BASE = 3;
   static const uint8_t GATE_BASE = CVMOD_BASE + 2 * CVMOD_SLOTS;
+  static const uint8_t MIDI_BYTE = GATE_BASE + CP_MOD_COUNT;
+  static const uint8_t SAVE_BYTES = MIDI_BYTE + 2; // midi_ is 16 bits
+
   void save(byte *p) const {
     p[0] = base_clock_mod_;
     p[1] = mute_ ? 0x01 : 0x00;
@@ -277,6 +334,8 @@ public:
     }
     for (uint8_t i = CP_MOD_FIRST; i <= CP_MOD_LAST; i++)
       p[GATE_BASE + (i - CP_MOD_FIRST)] = base_[i];
+    p[MIDI_BYTE] = (byte)(midi_ & 0xFF);
+    p[MIDI_BYTE + 1] = (byte)(midi_ >> 8);
   }
 
   void load(const byte *p) {
@@ -287,7 +346,11 @@ public:
       cvdest_[s] = (CvTarget)constrain((int)p[CVMOD_BASE + s], 0, CV_TARGET_COUNT - 1);
       cvamt_[s] = (int8_t)constrain((int)(int8_t)p[CVMOD_BASE + CVMOD_SLOTS + s], -100, 100);
     }
-    // Clamp in STEPS -> HITS order so HITS can bound to the loaded step count.
+
+    midi_ = (uint16_t)(p[MIDI_BYTE] | ((uint16_t)p[MIDI_BYTE + 1] << 8));
+    if (getMidiChannel() > MIDI_CH_COUNT)
+      setMidiChannel(MIDI_CH_OFF);
+
     for (uint8_t i = CP_MOD_FIRST; i <= CP_MOD_LAST; i++)
       base_[i] = clampParam(i, (int)p[GATE_BASE + (i - CP_MOD_FIRST)], base_[CP_STEPS]);
     syncLive();
@@ -295,7 +358,6 @@ public:
     refreshModPulses();
     finalize();
   }
-  static const uint8_t SAVE_BYTES = GATE_BASE + CP_MOD_COUNT;
 
 private:
   // Phase at which a gate edge with the given pulse `shift` occurs, i.e.
@@ -310,8 +372,21 @@ private:
     return shift ? (uint16_t)(mod - shift) : 0;
   }
 
+  // Per-hit probability roll, 0..99: any PROB fires within 1/256 of its exact
+  // odds. random(0, 100) costs two 32-bit divisions (~95 us) and this runs in
+  // the clock ISR for every hit: a 16-bit xorshift (period 65535) plus an 8x8
+  // multiply-shift instead. Not reentrant - ISR only.
+  static uint8_t rollPercent() {
+    static uint16_t x = 0xACE1; // any non-zero seed
+    x ^= x << 7;
+    x ^= x >> 9;
+    x ^= x << 8;
+    const uint8_t hi = x >> 8;
+    return (uint8_t)((hi * 100u) >> 8);
+  }
+
   // Clamp a raw value to param i's range. HITS is bounded by `steps`.
-  static int clampParam(uint8_t i, int v, int8_t steps) {
+  static uint8_t clampParam(uint8_t i, int v, int8_t steps) {
     switch (i) {
     case CP_STEPS: return constrain(v, 1, MAX_PATTERN_STEPS);
     case CP_HITS: return constrain(v, 1, steps);
@@ -405,6 +480,7 @@ private:
   uint16_t last_mod_;
   uint16_t mod_pulses_; // cached clockModPulses(live_clock_mod_)
 
+  uint16_t midi_;    // bits 0..6 note, bits 7..10 channel - 1
   uint8_t step_;     // current step index
   uint8_t choke_; // 0 = off, else 1-based source channel that silences this one
   bool mute_;

@@ -79,15 +79,34 @@ void test_probability_zero_never_fires(void) {
   ch.editParam(CP_PROB, -100);
   TEST_ASSERT_EQUAL_INT(0, ch.paramValue(CP_PROB, false));
 
-  // random() is overloaded, so the two-arg form has to be named explicitly.
-  // 0 is the lowest possible roll: if PROB = 0 still loses to it, it always does.
-  When(OverloadedMethod(ArduinoFake(), random, long(long, long)))
-      .AlwaysReturn(0);
   DigitalOutput out;
   out.Init(7);
   for (uint32_t t = 0; t < 32; t++) {
     ch.processClockTick(t, out);
     TEST_ASSERT_FALSE(out.On());
+  }
+}
+
+// The per-hit roll spreads evenly over 0..99: PROB = 50 fires about half the
+// hits, PROB = 10 about a tenth. Guards the xorshift + multiply-shift mapping.
+void test_probability_roll_is_uniform(void) {
+  const uint8_t probs[] = {50, 10};
+  for (uint8_t p = 0; p < 2; p++) {
+    Channel ch;
+    ch.setClockMod(MOD_CHOICE_SIZE - 1); // 4 ticks per step
+    ch.editParam(CP_PROB, probs[p] - 100); // STEPS = HITS = 1: every step a hit
+    DigitalOutput out;
+    out.Init(7);
+    const uint16_t steps = 2000;
+    uint16_t fired = 0;
+    for (uint32_t t = 0; t < steps * 4UL; t++) {
+      const bool was_on = out.On();
+      ch.processClockTick(t, out);
+      if (!was_on && out.On())
+        fired++;
+    }
+    // ~4.5 sigma for p = 0.5 over 2000 steps; the roll is deterministic anyway.
+    TEST_ASSERT_INT_WITHIN(100, steps * probs[p] / 100, fired);
   }
 }
 
@@ -268,6 +287,64 @@ void test_load_clamps_corrupt_record(void) {
     TEST_ASSERT_TRUE(ch.getCvDest(s) < CV_TARGET_COUNT);
     TEST_ASSERT_TRUE(ch.getCvAmount(s) >= -100 && ch.getCvAmount(s) <= 100);
   }
+}
+
+// MIDI channel and note share one uint16_t (note in bits 0..6, channel in
+// 7..10). Neither field may disturb the other anywhere in its range, and both
+// must survive a save/load round trip.
+void test_midi_channel_note_packing(void) {
+  Channel ch;
+  TEST_ASSERT_EQUAL_INT(MIDI_CH_OFF, ch.getMidiChannel()); // default: no MIDI
+  TEST_ASSERT_EQUAL_INT(MIDI_DEFAULT_NOTE, ch.getMidiNote());
+  TEST_ASSERT_EQUAL_INT(MIDI_DEFAULT_VEL_STEP, ch.getMidiVelStep());
+  TEST_ASSERT_EQUAL_INT(111, ch.getMidiVelocity()); // step 13 -> exactly 111
+
+  // Exhaustive: every channel against every note, each leaving the other alone.
+  for (uint8_t c = 0; c <= MIDI_CH_COUNT; c++) {
+    for (uint8_t n = 0; n < MIDI_NOTE_COUNT; n++) {
+      ch.setMidiChannel(c);
+      ch.setMidiNote(n);
+      TEST_ASSERT_EQUAL_INT(c, ch.getMidiChannel());
+      TEST_ASSERT_EQUAL_INT(n, ch.getMidiNote());
+    }
+  }
+
+  // Out-of-range edits clamp instead of spilling into the neighbouring field.
+  ch.setMidiChannel(1);
+  ch.setMidiNote(64);
+  ch.setMidiChannel(99);
+  TEST_ASSERT_EQUAL_INT(MIDI_CH_COUNT, ch.getMidiChannel());
+  TEST_ASSERT_EQUAL_INT(64, ch.getMidiNote()); // untouched
+  ch.setMidiNote(200);
+  TEST_ASSERT_EQUAL_INT(MIDI_NOTE_COUNT - 1, ch.getMidiNote());
+  TEST_ASSERT_EQUAL_INT(MIDI_CH_COUNT, ch.getMidiChannel()); // still intact
+
+  // Velocity occupies the top 4 bits; it must not disturb channel or note.
+  ch.setMidiChannel(9);
+  ch.setMidiNote(70);
+  for (uint8_t s = 0; s < MIDI_VEL_COUNT; s++) {
+    ch.setMidiVelStep(s);
+    TEST_ASSERT_EQUAL_INT(s, ch.getMidiVelStep());
+    TEST_ASSERT_EQUAL_INT((s << 3) | 7, ch.getMidiVelocity()); // 7..127
+    TEST_ASSERT_EQUAL_INT(9, ch.getMidiChannel());
+    TEST_ASSERT_EQUAL_INT(70, ch.getMidiNote());
+  }
+  ch.setMidiVelStep(200); // clamps, does not spill into the note/channel
+  TEST_ASSERT_EQUAL_INT(MIDI_VEL_COUNT - 1, ch.getMidiVelStep());
+  TEST_ASSERT_EQUAL_INT(127, ch.getMidiVelocity());
+  TEST_ASSERT_EQUAL_INT(9, ch.getMidiChannel());
+  TEST_ASSERT_EQUAL_INT(70, ch.getMidiNote());
+
+  ch.setMidiChannel(7);
+  ch.setMidiNote(127);
+  ch.setMidiVelStep(5);
+  byte p[Channel::SAVE_BYTES];
+  ch.save(p);
+  Channel other;
+  other.load(p);
+  TEST_ASSERT_EQUAL_INT(7, other.getMidiChannel());
+  TEST_ASSERT_EQUAL_INT(127, other.getMidiNote());
+  TEST_ASSERT_EQUAL_INT(5, other.getMidiVelStep());
 }
 
 // A CV routed to HITS must actually change the drawn pattern, not just live_.
@@ -526,6 +603,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_defaults);
   RUN_TEST(test_param_ranges);
   RUN_TEST(test_probability_zero_never_fires);
+  RUN_TEST(test_probability_roll_is_uniform);
   RUN_TEST(test_hits_clamped_to_steps);
   RUN_TEST(test_euclidean_gate_pattern);
   RUN_TEST(test_probability_gate_edges);
@@ -535,6 +613,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_cv_targets_clock_mod);
   RUN_TEST(test_cv_targets_duty_and_prob);
   RUN_TEST(test_cv_hits_redraws_pattern);
+  RUN_TEST(test_midi_channel_note_packing);
   RUN_TEST(test_load_clamps_corrupt_record);
   RUN_TEST(test_cv_steps_down_rebounds_hits_and_rotate);
   RUN_TEST(test_save_load_roundtrip);
